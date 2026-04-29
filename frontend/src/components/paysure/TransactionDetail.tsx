@@ -40,10 +40,14 @@ export const TransactionDetail = ({ txn, open, onOpenChange, onRefund }: Props) 
 
   const handleProof = async () => {
     try {
+      const token = localStorage.getItem("paysure_token");
       const res = await fetch(`${API_BASE}/api/proof/generate`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transaction_id: parseInt(txn.id) })
+        headers: { 
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ transaction_id: txn.id })
       });
       const data = await res.json();
       if (data.verification_url) {

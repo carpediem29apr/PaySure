@@ -72,9 +72,16 @@ class MerchantCreate(BaseModel):
     password: str
     business_name: str
     phone: str
+    name: Optional[str] = None
+    age: Optional[str] = None
+    aadhaar: Optional[str] = None
+    pan: Optional[str] = None
+    merchant_id_code: Optional[str] = None
+    gstin: Optional[str] = None
 
 class MerchantLogin(BaseModel):
-    email: EmailStr
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
     password: str
 
 class MerchantResponse(BaseModel):
@@ -83,6 +90,12 @@ class MerchantResponse(BaseModel):
     business_name: str
     phone: str
     created_at: datetime
+    name: Optional[str] = None
+    age: Optional[str] = None
+    aadhaar: Optional[str] = None
+    pan: Optional[str] = None
+    merchant_id_code: Optional[str] = None
+    gstin: Optional[str] = None
 
 class TransactionResponse(BaseModel):
     id: str
@@ -156,9 +169,9 @@ def get_current_merchant(credentials: HTTPAuthorizationCredentials = Depends(sec
         if not merchant:
             merchant = create_merchant({
                 "email": "sharma.store@gmail.com",
-                "hashed_password": "demo",
+                "hashed_password": hash_password("demo"),
                 "business_name": "Sharma General Store",
-                "phone": "+919810233421",
+                "phone": "9810233421",
                 "razorpay_key_id": os.getenv("RAZORPAY_KEY_ID", "rzp_test_SjPsXMmj345aei"),
                 "razorpay_key_secret": os.getenv("RAZORPAY_KEY_SECRET", "5V769lVZJTc4iuZO44PLldBM"),
             })
@@ -167,16 +180,17 @@ def get_current_merchant(credentials: HTTPAuthorizationCredentials = Depends(sec
     token = credentials.credentials
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email = payload.get("sub")
-        if email is None:
+        # Try finding by sub (email or phone)
+        sub = payload.get("sub")
+        if sub is None:
             raise HTTPException(status_code=401, detail="Invalid token")
+        
+        merchant = get_merchant_by_email(sub) or get_merchant_by_phone(sub)
+        if merchant is None:
+            raise HTTPException(status_code=401, detail="Merchant not found")
+        return merchant
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
-
-    merchant = get_merchant_by_email(email)
-    if merchant is None:
-        raise HTTPException(status_code=401, detail="Merchant not found")
-    return merchant
 
 def generate_utr():
     timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
@@ -244,29 +258,40 @@ async def chat_with_ai(req: ChatRequest):
 # ─── Auth Routes ─────────────────────────────────────────────────────────────
 @app.post("/api/auth/register")
 def register(merchant: MerchantCreate):
-    existing = get_merchant_by_email(merchant.email)
-    if existing:
+    existing_email = get_merchant_by_email(merchant.email)
+    if existing_email:
         raise HTTPException(status_code=400, detail="Email already registered")
-    m = create_merchant({
-        "email": merchant.email,
-        "hashed_password": hash_password(merchant.password),
-        "business_name": merchant.business_name,
-        "phone": merchant.phone
-    })
-    return MerchantResponse(id=m["id"], email=m["email"], business_name=m["business_name"], phone=m["phone"], created_at=m["created_at"])
+    
+    existing_phone = get_merchant_by_phone(merchant.phone)
+    if existing_phone:
+        raise HTTPException(status_code=400, detail="Phone number already registered")
+
+    m_data = merchant.dict()
+    password = m_data.pop("password")
+    m_data["hashed_password"] = hash_password(password)
+    
+    m = create_merchant(m_data)
+    return MerchantResponse(**m)
 
 @app.post("/api/auth/login")
 def login(creds: MerchantLogin):
-    merchant = get_merchant_by_email(creds.email)
+    merchant = None
+    if creds.email:
+        merchant = get_merchant_by_email(creds.email)
+    elif creds.phone:
+        merchant = get_merchant_by_phone(creds.phone)
+    
     if not merchant or not verify_password(creds.password, merchant["hashed_password"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    token = create_access_token({"sub": merchant["email"], "merchant_id": merchant["id"]})
-    resp = MerchantResponse(id=merchant["id"], email=merchant["email"], business_name=merchant["business_name"], phone=merchant["phone"], created_at=merchant["created_at"])
+    
+    sub = merchant.get("email") or merchant.get("phone")
+    token = create_access_token({"sub": sub, "merchant_id": merchant["id"]})
+    resp = MerchantResponse(**merchant)
     return {"access_token": token, "token_type": "bearer", "merchant": resp}
 
 @app.get("/api/auth/me")
 def get_me(current: dict = Depends(get_current_merchant)):
-    return MerchantResponse(id=current["id"], email=current["email"], business_name=current["business_name"], phone=current["phone"], created_at=current.get("created_at", datetime.utcnow()))
+    return MerchantResponse(**current)
 
 # ─── Transaction Routes ──────────────────────────────────────────────────────
 @app.get("/api/transactions")

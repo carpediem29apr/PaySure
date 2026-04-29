@@ -73,9 +73,13 @@ export async function sendChatMessage(
   transactions: TransactionContext[]
 ): Promise<string> {
   try {
+    const token = localStorage.getItem("paysure_token");
     const response = await fetch(`${API_BASE}/api/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        ...(token ? { "Authorization": `Bearer ${token}` } : {})
+      },
       body: JSON.stringify({
         message,
         history: history.map((m) => ({ from: m.from, text: m.text })),

@@ -32,7 +32,11 @@ const Index = () => {
   // Fetch transactions from FastAPI backend
   const fetchTxns = useCallback(async () => {
     try {
-      const res = await axios.get(`${API_BASE}/api/transactions`, { timeout: 15000 });
+      const token = localStorage.getItem("paysure_token");
+      const res = await axios.get(`${API_BASE}/api/transactions`, { 
+        timeout: 15000,
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       // Map backend fields to frontend Transaction interface
       const mapped = res.data.map((t: any) => ({
         id: t.id.toString(),
@@ -72,13 +76,19 @@ const Index = () => {
 
     setLoading(true);
     try {
+      const token = localStorage.getItem("paysure_token");
+      const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
+
       // Both requests run in parallel: create order + ensure Razorpay is loaded
       const [res, razorpayReady] = await Promise.all([
         axios.post(`${API_BASE}/api/payments/create-order`, {
           amount,
           customer_phone: "+919876543210",
           description: "Test Payment from PaySure UI"
-        }, { timeout: 30000 }),
+        }, { 
+          timeout: 30000,
+          headers: authHeader
+        }),
         preloadRazorpay()
       ]);
       
@@ -97,15 +107,20 @@ const Index = () => {
         order_id: res.data.razorpay_order_id,
         handler: async function (response: any) {
           try {
+            const token = localStorage.getItem("paysure_token");
             await axios.post(`${API_BASE}/api/payments/confirm`, {
               transaction_id: res.data.transaction.id,
               razorpay_payment_id: response.razorpay_payment_id
-            }, { timeout: 15000 });
+            }, { 
+              timeout: 15000,
+              headers: token ? { Authorization: `Bearer ${token}` } : {}
+            });
+            alert(`Payment successful! ID: ${response.razorpay_payment_id}`);
+            fetchTxns();
           } catch (e) {
             console.error("Failed to confirm payment", e);
+            alert("Payment recorded, but confirmation failed. Please check transactions.");
           }
-          alert(`Payment successful! ID: ${response.razorpay_payment_id}`);
-          fetchTxns();
         },
         prefill: {
           contact: "+919876543210"

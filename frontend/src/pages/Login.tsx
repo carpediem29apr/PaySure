@@ -60,11 +60,10 @@ const Login = () => {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
-    // Validate phone length
     if (phone.length !== 10) {
       setError("Phone number must be exactly 10 digits.");
       return;
@@ -77,68 +76,67 @@ const Login = () => {
 
     setIsSubmitting(true);
 
-    if (mode === "signup") {
-      // --- SIGN UP ---
-      if (!name.trim()) {
-        setError("Full name is required.");
-        setIsSubmitting(false);
-        return;
-      }
-      if (!shopName.trim()) {
-        setError("Shop / Business name is required.");
-        setIsSubmitting(false);
-        return;
-      }
-      if (!email.trim()) {
-        setError("Email is required.");
-        setIsSubmitting(false);
-        return;
-      }
+    try {
+      if (mode === "signup") {
+        const response = await fetch(`${API_BASE}/api/auth/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email,
+            password,
+            business_name: shopName,
+            phone,
+            name,
+            age,
+            aadhaar,
+            pan,
+            merchant_id_code: merchantId,
+            gstin
+          }),
+        });
 
-      const users = getStoredUsers();
-      const exists = users.find((u) => u.phone === phone);
-      if (exists) {
-        setError("This phone number is already registered. Please login.");
-        setIsSubmitting(false);
-        return;
-      }
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.detail || "Signup failed");
+        }
+        
+        // Auto-login after signup
+        const loginResponse = await fetch(`${API_BASE}/api/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone, password }),
+        });
 
-      const newUser: StoredUser = {
-        name,
-        shopName,
-        phone,
-        email,
-        password,
-        age,
-        aadhaar,
-        pan,
-        merchantId,
-        gstin,
-      };
+        if (loginResponse.ok) {
+          const data = await loginResponse.json();
+          localStorage.setItem("paysure_token", data.access_token);
+          localStorage.setItem("paysure_current_user", JSON.stringify(data.merchant));
+          navigate("/dashboard");
+        } else {
+          setMode("login");
+          setError("Account created! Please login.");
+        }
+      } else {
+        const response = await fetch(`${API_BASE}/api/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone, password }),
+        });
 
-      users.push(newUser);
-      localStorage.setItem("paysure_users", JSON.stringify(users));
-      localStorage.setItem("paysure_current_user", JSON.stringify(newUser));
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.detail || "Invalid phone number or password");
+        }
 
-      setTimeout(() => {
+        const data = await response.json();
+        localStorage.setItem("paysure_token", data.access_token);
+        localStorage.setItem("paysure_current_user", JSON.stringify(data.merchant));
         navigate("/dashboard");
-      }, 600);
-    } else {
-      // --- LOGIN ---
-      const users = getStoredUsers();
-      const found = users.find((u) => u.phone === phone && u.password === password);
-
-      if (!found) {
-        setError("Invalid phone number or password. Please try again or sign up.");
-        setIsSubmitting(false);
-        return;
       }
-
-      localStorage.setItem("paysure_current_user", JSON.stringify(found));
-
-      setTimeout(() => {
-        navigate("/dashboard");
-      }, 600);
+    } catch (err: any) {
+      setError(err.message || "An error occurred. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 

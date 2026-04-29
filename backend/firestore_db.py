@@ -59,6 +59,13 @@ def get_merchant_by_email(email: str) -> dict | None:
         return {**doc.to_dict(), "id": doc.id}
     return None
 
+def get_merchant_by_phone(phone: str) -> dict | None:
+    """Query merchant by phone number."""
+    docs = get_db().collection("merchants").where("phone", "==", phone).limit(1).stream()
+    for doc in docs:
+        return {**doc.to_dict(), "id": doc.id}
+    return None
+
 def get_merchant_by_id(merchant_id: str) -> dict | None:
     """Get merchant by document ID."""
     doc = get_db().collection("merchants").document(merchant_id).get()

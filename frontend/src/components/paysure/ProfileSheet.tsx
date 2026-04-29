@@ -29,11 +29,11 @@ export const ProfileSheet = ({ open, onOpenChange }: Props) => {
           const user = JSON.parse(raw);
           setMerchant({
             ...merchantProfile,
-            name: user.shopName || merchantProfile.name,
+            name: user.business_name || user.shopName || merchantProfile.name,
             ownerName: user.name || merchantProfile.ownerName,
             phone: user.phone ? `+91 ${user.phone}` : merchantProfile.phone,
             email: user.email || merchantProfile.email,
-            merchantId: user.merchantId || merchantProfile.merchantId,
+            merchantId: user.merchant_id_code || user.merchantId || merchantProfile.merchantId,
             gstin: user.gstin || merchantProfile.gstin,
           });
         }
@@ -45,6 +45,7 @@ export const ProfileSheet = ({ open, onOpenChange }: Props) => {
 
   const handleLogout = () => {
     localStorage.removeItem("paysure_current_user");
+    localStorage.removeItem("paysure_token");
     onOpenChange(false);
     navigate("/");
   };
