@@ -5,7 +5,8 @@ import { TransactionDetail } from "@/components/paysure/TransactionDetail";
 import { ProfileSheet } from "@/components/paysure/ProfileSheet";
 import { ChatSheet } from "@/components/paysure/ChatSheet";
 import { type Transaction } from "@/data/transactions";
-import { User, MessageCircle, Plus } from "lucide-react";
+import { User, MessageCircle, Plus, BarChart3 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API_BASE } from "@/lib/api";
 
@@ -16,6 +17,7 @@ const Index = () => {
   const [profileOpen, setProfileOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
   // Fetch transactions from FastAPI backend
   const fetchTxns = async () => {
@@ -42,6 +44,8 @@ const Index = () => {
 
   useEffect(() => {
     fetchTxns();
+    const interval = setInterval(fetchTxns, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadRazorpay = () => {
@@ -151,6 +155,7 @@ const Index = () => {
 
   const verifyingCount = txns.filter((t) => t.status === "verifying").length;
   const duplicateCount = txns.filter((t) => t.status === "duplicate").length;
+  const receivedAmount = txns.filter((t) => t.status === "received").reduce((sum, t) => sum + t.amount, 0);
 
   // Group txns by date while preserving chronological order
   const groupedTxns: { date: string; txns: Transaction[] }[] = [];
@@ -169,7 +174,11 @@ const Index = () => {
 
       {/* Summary strip */}
       <section className="px-5 pt-4">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
+          <div className="receipt-card px-3 py-2.5">
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Received</p>
+            <p className="font-mono-num text-xl font-bold text-green-600 mt-0.5">₹{receivedAmount.toLocaleString("en-IN")}</p>
+          </div>
           <div className="receipt-card px-3 py-2.5">
             <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Verifying</p>
             <p className="font-mono-num text-xl font-bold text-verifying mt-0.5">{verifyingCount}</p>
@@ -187,6 +196,12 @@ const Index = () => {
             Transaction Log
           </h2>
           <div className="flex items-center gap-3">
+            <button 
+              onClick={() => navigate("/reconcile")}
+              className="flex items-center gap-1 bg-secondary text-secondary-foreground px-3 py-1.5 rounded-full text-xs font-medium shadow-sm hover:bg-secondary/80 active:scale-95 transition-all"
+            >
+              <BarChart3 className="w-3 h-3" /> Reconcile
+            </button>
             <button 
               onClick={createPayment} 
               disabled={loading}

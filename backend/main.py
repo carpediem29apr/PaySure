@@ -785,6 +785,45 @@ async def simulate_webhook(background_tasks: BackgroundTasks, current: Merchant 
 
     return {"success": True, "message": "Simulated Webhook Received", "transaction": TransactionResponse.from_orm(txn)}
 
+# ─── Reconciliation (Staff Mode: 1-Tap Audit) ────────────────────────────────
+@app.get("/api/reconcile")
+def reconcile(current: Merchant = Depends(get_current_merchant), db: Session = Depends(get_db)):
+    """Staff Mode: 1-Tap daily reconciliation showing Expected vs Received"""
+    today = datetime.utcnow().date()
+    txns = db.query(Transaction).filter(
+        Transaction.merchant_id == current.id,
+        Transaction.created_at >= today
+    ).all()
+
+    captured = [t for t in txns if t.status == "captured"]
+    pending = [t for t in txns if t.status in ["pending", "authorized"]]
+    failed = [t for t in txns if t.status == "failed"]
+    refunded = [t for t in txns if t.status == "refunded"]
+
+    missing = []
+    for t in pending + failed:
+        missing.append({
+            "utr": t.utr,
+            "amount": t.amount,
+            "time": t.created_at.strftime("%I:%M %p") if t.created_at else "N/A",
+            "phone": t.customer_phone or "Unknown",
+            "status": t.status
+        })
+
+    return {
+        "date": today.strftime("%d %B %Y"),
+        "total_transactions": len(txns),
+        "captured_count": len(captured),
+        "captured_amount": sum(t.amount for t in captured),
+        "pending_count": len(pending),
+        "pending_amount": sum(t.amount for t in pending),
+        "failed_count": len(failed),
+        "failed_amount": sum(t.amount for t in failed),
+        "refunded_count": len(refunded),
+        "refunded_amount": sum(t.refund_amount or t.amount for t in refunded),
+        "missing": missing
+    }
+
 # ─── Health Check ────────────────────────────────────────────────────────────
 @app.get("/api/health")
 def health():
