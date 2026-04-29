@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff, ShieldCheck, ArrowRight, User, Phone, Lock, CreditCard, Hash, Building2, Calendar } from "lucide-react";
+import { warmUpBackend } from "@/lib/api";
 
 type Mode = "login" | "signup";
 
@@ -23,6 +24,9 @@ const Login = () => {
   const [gstin, setGstin] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Wake up the backend while user fills in the login form
+  useEffect(() => { warmUpBackend(); }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
