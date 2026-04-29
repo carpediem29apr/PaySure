@@ -184,6 +184,10 @@ class CreateOrderRequest(BaseModel):
     customer_email: Optional[str] = None
     description: Optional[str] = "UPI Payment"
 
+class PaymentConfirmRequest(BaseModel):
+    transaction_id: int
+    razorpay_payment_id: str
+
 class ChatRequest(BaseModel):
     message: str
     history: Optional[List[dict]] = []
@@ -680,7 +684,7 @@ def send_test_sms(req: SMSSendRequest, current: Merchant = Depends(get_current_m
 
 # ─── Simulate Webhook (Hackathon Demo) ───────────────────────────────────────
 @app.post("/api/test/simulate-webhook")
-async def simulate_webhook(current: Merchant = Depends(get_current_merchant), db: Session = Depends(get_db)):
+async def simulate_webhook(background_tasks: BackgroundTasks, current: Merchant = Depends(get_current_merchant), db: Session = Depends(get_db)):
     """Simulates Razorpay sending a webhook for a Static QR payment"""
     # 1. Generate fake payment data
     amount = float(random.choice([150, 450, 1299, 240, 50, 999]))
@@ -703,6 +707,18 @@ async def simulate_webhook(current: Merchant = Depends(get_current_merchant), db
     db.add(txn)
     db.commit()
     db.refresh(txn)
+
+    # 3. Send SMS notifications
+    base_url = "https://settleproof.com"
+    verify_url = f"{base_url}/v/{txn.utr}"
+    
+    if txn.customer_phone:
+        cust_msg = f"Your payment of Rs.{txn.amount:.2f} to {current.business_name} is confirmed. Verify: {verify_url}"
+        background_tasks.add_task(send_sms, txn.customer_phone, cust_msg)
+        
+    if current.phone:
+        merch_msg = f"PaySure Alert: You received Rs.{txn.amount:.2f} from {txn.customer_phone or 'Customer'}. UTR: {txn.utr}. Verify: {verify_url}"
+        background_tasks.add_task(send_sms, current.phone, merch_msg)
 
     return {"success": True, "message": "Simulated Webhook Received", "transaction": TransactionResponse.from_orm(txn)}
 
@@ -740,7 +756,11 @@ def create_order(
     }
     
     try:
-        razorpay_order = razorpay_client.order.create(data=order_data)
+        if current.razorpay_key_id and current.razorpay_key_secret:
+            merchant_client = razorpay.Client(auth=(current.razorpay_key_id, current.razorpay_key_secret))
+            razorpay_order = merchant_client.order.create(data=order_data)
+        else:
+            razorpay_order = razorpay_client.order.create(data=order_data)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
         
@@ -766,6 +786,36 @@ def create_order(
         "razorpay_order_id": razorpay_order["id"],
         "key_id": current.razorpay_key_id or RAZORPAY_KEY_ID
     }
+
+@app.post("/api/payments/confirm")
+def confirm_payment(req: PaymentConfirmRequest, background_tasks: BackgroundTasks, current: Merchant = Depends(get_current_merchant), db: Session = Depends(get_db)):
+    """Confirm a successful checkout payment and send SMS notifications to both parties"""
+    txn = db.query(Transaction).filter(Transaction.id == req.transaction_id, Transaction.merchant_id == current.id).first()
+    if not txn:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+        
+    if txn.status != "captured":
+        txn.status = "captured"
+        txn.razorpay_payment_id = req.razorpay_payment_id
+        txn.updated_at = datetime.utcnow()
+        if not txn.proof_hash:
+            timestamp = datetime.utcnow().isoformat()
+            txn.proof_hash = generate_proof_hash(txn.utr, txn.amount, timestamp)
+        db.commit()
+        db.refresh(txn)
+        
+        # Send SMS
+        base_url = "https://settleproof.com"
+        verify_url = f"{base_url}/v/{txn.utr}"
+        if txn.customer_phone:
+            cust_msg = f"Your payment of Rs.{txn.amount:.2f} to {current.business_name} is confirmed. Verify: {verify_url}"
+            background_tasks.add_task(send_sms, txn.customer_phone, cust_msg)
+            
+        if current.phone:
+            merch_msg = f"PaySure Alert: You received Rs.{txn.amount:.2f} from {txn.customer_phone or 'Customer'}. UTR: {txn.utr}. Verify: {verify_url}"
+            background_tasks.add_task(send_sms, current.phone, merch_msg)
+
+    return {"success": True}
 
 # ─── Main ────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
