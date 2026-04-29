@@ -1,4 +1,4 @@
-export type TxnStatus = "verifying" | "duplicate" | "refunded" | "received";
+export type TxnStatus = "verifying" | "duplicate" | "refunded" | "received" | "failed" | "pending";
 
 export interface Transaction {
   id: string;

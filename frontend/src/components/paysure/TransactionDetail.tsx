@@ -47,7 +47,7 @@ export const TransactionDetail = ({ txn, open, onOpenChange, onRefund }: Props) 
           "Content-Type": "application/json",
           ...(token ? { "Authorization": `Bearer ${token}` } : {})
         },
-        body: JSON.stringify({ transaction_id: txn.id })
+        body: JSON.stringify({ transaction_id: String(txn.id) })
       });
       const data = await res.json();
       if (data.verification_url) {
@@ -55,10 +55,12 @@ export const TransactionDetail = ({ txn, open, onOpenChange, onRefund }: Props) 
         txn.utr = data.utr;
         toast({ title: "Proof generated", description: "Share link is ready." });
       } else {
-        throw new Error(data.detail || "Failed to generate proof");
+        const errorMessage = Array.isArray(data.detail) ? data.detail[0]?.msg : data.detail;
+        throw new Error(errorMessage || "Failed to generate proof");
       }
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast({ title: "Error", description: msg, variant: "destructive" });
     }
   };
 

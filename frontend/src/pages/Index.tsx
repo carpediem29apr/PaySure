@@ -38,6 +38,7 @@ const Index = () => {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
       // Map backend fields to frontend Transaction interface
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const mapped = res.data.map((t: any) => ({
         id: t.id.toString(),
         type: t.status === "captured" ? "standard" : (t.status === "failed" ? "unfinished" : "unfinished"),
@@ -105,6 +106,7 @@ const Index = () => {
         name: "PaySure",
         description: "Payment for order",
         order_id: res.data.razorpay_order_id,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         handler: async function (response: any) {
           try {
             const token = localStorage.getItem("paysure_token");
@@ -130,15 +132,18 @@ const Index = () => {
         }
       };
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const paymentObject = new (window as any).Razorpay(options);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       paymentObject.on('payment.failed', function (response: any) {
         console.error("Razorpay Payment Failed Event:", response.error);
         alert("Payment Failed: " + response.error.description);
       });
       paymentObject.open();
-    } catch (err: any) {
-      console.error("Caught error in createPayment:", err);
-      if (err?.code === "ECONNABORTED" || err?.message?.includes("timeout")) {
+    } catch (err) {
+      const error = err as Error & { code?: string };
+      console.error("Caught error in createPayment:", error);
+      if (error?.code === "ECONNABORTED" || error?.message?.includes("timeout")) {
         alert("Server is waking up. Please wait a few seconds and try again.");
       } else {
         alert("Failed to create payment. Please try again.");
@@ -159,7 +164,7 @@ const Index = () => {
     setLoading(true);
     try {
       const res = await axios.post(`${API_BASE}/api/refund`, {
-        transaction_id: parseInt(id),
+        transaction_id: String(id),
         reason: "Duplicate payment requested refund"
       });
       const stamp = new Date().toLocaleTimeString("en-IN", {

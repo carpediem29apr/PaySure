@@ -32,7 +32,7 @@ def init_firebase():
 
     firebase_admin.initialize_app(cred)
     db = firestore.client()
-    print(f"✅ Firebase initialized — project: {cred.project_id}")
+    print(f"Firebase initialized - project: {cred.project_id}")
     return db
 
 def get_db():
