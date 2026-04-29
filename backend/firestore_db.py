@@ -101,8 +101,9 @@ def get_transactions(merchant_id: str, status: str = None, limit: int = 50) -> l
     query = get_db().collection("transactions").where("merchant_id", "==", merchant_id)
     if status:
         query = query.where("status", "==", status)
-    query = query.order_by("created_at", direction=firestore.Query.DESCENDING).limit(limit)
-    return [{**doc.to_dict(), "id": doc.id} for doc in query.stream()]
+    results = [{**doc.to_dict(), "id": doc.id} for doc in query.stream()]
+    results.sort(key=lambda x: x.get("created_at", datetime.min), reverse=True)
+    return results[:limit]
 
 def get_transaction_by_utr(utr: str) -> dict | None:
     """Query transaction by UTR."""
