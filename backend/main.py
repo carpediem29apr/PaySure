@@ -1,6 +1,6 @@
 """
 paysure - Trust after payment, in 3 seconds.
-FastAPI backend with Razorpay test webhooks, JWT auth, Twilio SMS, and AI insights.
+FastAPI backend with Razorpay test webhooks, JWT auth, Twilio SMS, and Groq AI insights.
 """
 
 from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks, Request
@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import jwt
 import os
+import sys
 from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 import json
@@ -22,9 +23,13 @@ from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, 
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
 from passlib.context import CryptContext
-from twilio.rest import Client as TwilioClient
-import httpx
-import razorpay
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Add parent dir to path so we can import from ai/
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from ai.gemini_config import build_chat_prompt, DAILY_INSIGHTS_PROMPT, format_transactions
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 SECRET_KEY = os.getenv("SECRET_KEY", "paysure-super-secret-key-change-in-production")
@@ -39,11 +44,29 @@ TWILIO_SID = os.getenv("TWILIO_SID", "your_twilio_sid")
 TWILIO_TOKEN = os.getenv("TWILIO_TOKEN", "your_twilio_token")
 TWILIO_PHONE = os.getenv("TWILIO_PHONE", "+1234567890")
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "your_openai_api_key")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./paysure.db")
 
-razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+# Razorpay client (only init if keys are real)
+razorpay_client = None
+try:
+    import razorpay
+    if RAZORPAY_KEY_ID and RAZORPAY_KEY_ID != "rzp_test_xxxxxxxxxxxx":
+        razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+except ImportError:
+    pass
+
+# Groq client
+groq_client = None
+try:
+    from groq import Groq
+    if GROQ_API_KEY:
+        groq_client = Groq(api_key=GROQ_API_KEY)
+except ImportError:
+    print("WARNING: groq not installed. AI features disabled.")
+
+GROQ_MODEL = "llama-3.3-70b-versatile"
 
 # ─── Database Setup ──────────────────────────────────────────────────────────
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {})
@@ -63,7 +86,6 @@ class Merchant(Base):
     phone = Column(String)
     razorpay_key_id = Column(String, nullable=True)
     razorpay_key_secret = Column(String, nullable=True)
-    razorpay_webhook_secret = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     is_active = Column(Boolean, default=True)
 
@@ -162,6 +184,14 @@ class CreateOrderRequest(BaseModel):
     customer_email: Optional[str] = None
     description: Optional[str] = "UPI Payment"
 
+class ChatRequest(BaseModel):
+    message: str
+    history: Optional[List[dict]] = []
+    transactions: Optional[List[dict]] = []
+
+class ChatResponse(BaseModel):
+    reply: str
+
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 def get_db():
     db = SessionLocal()
@@ -182,25 +212,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-def get_current_merchant(credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False)), db: Session = Depends(get_db)):
-    if credentials is None:
-        # For demo purposes, return or create a default merchant
-        merchant = db.query(Merchant).first()
-        if not merchant:
-            merchant = Merchant(
-                email="sharma.store@gmail.com", 
-                business_name="Sharma General Store", 
-                phone="+919810233421", 
-                hashed_password="dummy",
-                razorpay_webhook_secret=RAZORPAY_WEBHOOK_SECRET,
-                razorpay_key_id=RAZORPAY_KEY_ID,
-                razorpay_key_secret=RAZORPAY_KEY_SECRET
-            )
-            db.add(merchant)
-            db.commit()
-            db.refresh(merchant)
-        return merchant
-        
+def get_current_merchant(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)):
     token = credentials.credentials
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -229,6 +241,7 @@ def generate_proof_hash(utr: str, amount: float, timestamp: str, secret: str = S
 def send_sms(phone: str, message: str):
     """Send SMS via Twilio"""
     try:
+        from twilio.rest import Client as TwilioClient
         client = TwilioClient(TWILIO_SID, TWILIO_TOKEN)
         msg = client.messages.create(
             body=message,
@@ -240,7 +253,7 @@ def send_sms(phone: str, message: str):
         return {"success": False, "error": str(e)}
 
 async def generate_ai_summary(merchant_id: int, db: Session):
-    """Generate AI insight summary for merchant"""
+    """Generate AI insight summary for merchant using Groq"""
     today = datetime.utcnow().date()
     transactions = db.query(Transaction).filter(
         Transaction.merchant_id == merchant_id,
@@ -260,11 +273,10 @@ async def generate_ai_summary(merchant_id: int, db: Session):
 - ₹{total_amount:.2f} successfully received
 - ₹{pending_amount:.2f} pending confirmation"""
 
-    # If OpenAI key is available, enhance with GPT
-    if OPENAI_API_KEY and OPENAI_API_KEY != "your_openai_api_key":
+    # Enhance with Groq if available
+    if groq_client:
         try:
-            async with httpx.AsyncClient() as client:
-                prompt = f"""As a payment insights assistant, analyze this merchant's daily transactions and provide a brief, actionable summary in 2-3 sentences.
+            prompt = f"""{DAILY_INSIGHTS_PROMPT}
 
 Data:
 - Total transactions today: {len(transactions)}
@@ -272,25 +284,22 @@ Data:
 - Failed transactions: {failed}
 - Refunds: {refunded}
 - Amount received: ₹{total_amount:.2f}
-- Pending amount: ₹{pending_amount:.2f}
+- Pending amount: ₹{pending_amount:.2f}"""
 
-Keep it concise, friendly, and actionable."""
-
-                response = await client.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
-                    json={
-                        "model": "gpt-4",
-                        "messages": [{"role": "user", "content": prompt}],
-                        "max_tokens": 150
-                    },
-                    timeout=10.0
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    summary = data["choices"][0]["message"]["content"]
-        except Exception:
-            pass  # Fallback to basic summary
+            response = groq_client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=[
+                    {"role": "system", "content": DAILY_INSIGHTS_PROMPT},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.7,
+                max_tokens=300,
+            )
+            if response and response.choices:
+                summary = response.choices[0].message.content
+        except Exception as e:
+            print(f"Groq insights error: {e}")
+            # Fallback to basic summary
 
     return summary
 
@@ -308,6 +317,61 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ─── AI Chat Endpoint ───────────────────────────────────────────────────────
+@app.post("/api/chat", response_model=ChatResponse)
+async def chat_with_ai(req: ChatRequest):
+    """Chat with PaySure Help — Groq-powered transaction insights"""
+    if not groq_client:
+        # Fallback responses when Groq is not configured
+        return ChatResponse(reply=get_fallback_reply(req.message))
+
+    try:
+        # Build context-aware prompt with transaction data
+        messages = build_chat_prompt(
+            transactions=req.transactions,
+            user_message=req.message,
+            history=req.history
+        )
+
+        try:
+            # Call Groq
+            response = groq_client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=500,
+            )
+            reply = response.choices[0].message.content if response and response.choices else "Sorry, I couldn't process that. Please try again."
+            return ChatResponse(reply=reply)
+        except Exception as e:
+            err_str = str(e)
+            if "429" in err_str or "rate_limit" in err_str.lower():
+                return ChatResponse(reply="[Rate Limited] " + get_fallback_reply(req.message))
+            else:
+                raise e
+
+    except Exception as e:
+        print(f"Groq chat error: {e}")
+        return ChatResponse(reply=f"I'm having trouble connecting right now. Please try again in a moment.")
+
+
+
+def get_fallback_reply(question: str) -> str:
+    """Fallback replies when Gemini API is not configured."""
+    q = question.lower()
+    if "refund" in q:
+        return "Tap any duplicate transaction → 'Refund Duplicate Payment'. Money returns instantly via UPI."
+    if "settle" in q:
+        return "Today's settlement so far: ₹12,480. It credits to your bank by 10 PM."
+    if "verify" in q or "verifying" in q:
+        return "A payment shows VERIFYING when the bank hasn't sent us a final confirmation. Usually clears in 3 seconds."
+    if "duplicate" in q:
+        return "Duplicates occur when a customer's UPI app sends the same payment request twice within 60 seconds. You should refund one of them."
+    if "disput" in q:
+        return "I can see your disputed transactions. To resolve them, check the duplicate entries and initiate a refund for the extra payment."
+    return "I'm running in offline mode (no Groq API key configured). Add your GROQ_API_KEY to backend/.env for full AI-powered insights!"
+
 
 # ─── Auth Routes ─────────────────────────────────────────────────────────────
 @app.post("/api/auth/register", response_model=MerchantResponse)
@@ -368,20 +432,18 @@ def get_transaction(
     return txn
 
 # ─── Razorpay Webhook ────────────────────────────────────────────────────────
-@app.post("/api/webhooks/razorpay/{merchant_id}")
-async def razorpay_webhook(merchant_id: int, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    """Handle Razorpay payment webhooks as a Platform Partner"""
-    merchant = db.query(Merchant).filter(Merchant.id == merchant_id).first()
-    if not merchant or not merchant.razorpay_webhook_secret:
-        raise HTTPException(status_code=400, detail="Invalid merchant or missing webhook secret")
+@app.post("/api/webhooks/razorpay")
+async def razorpay_webhook(request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """Handle Razorpay payment webhooks"""
+    if not razorpay_client:
+        raise HTTPException(status_code=503, detail="Razorpay not configured")
 
     body = await request.body()
     signature = request.headers.get("X-Razorpay-Signature", "")
 
     try:
-        # We only observe the event. Verify using the merchant's unique webhook secret
-        razorpay_client.utility.verify_webhook_signature(body.decode("utf-8"), signature, merchant.razorpay_webhook_secret)
-    except razorpay.errors.SignatureVerificationError:
+        razorpay_client.utility.verify_webhook_signature(body.decode("utf-8"), signature, RAZORPAY_WEBHOOK_SECRET)
+    except Exception:
         raise HTTPException(status_code=400, detail="Invalid signature")
 
     try:
@@ -398,12 +460,8 @@ async def razorpay_webhook(merchant_id: int, request: Request, background_tasks:
         amount = payload.get("amount", 0) / 100  # Convert from paise
         status = "captured" if event == "payment.captured" else "authorized"
 
-        # Find transaction by order_id or payment_id if order_id is missing
-        txn = None
-        if order_id:
-            txn = db.query(Transaction).filter(Transaction.razorpay_order_id == order_id).first()
-        else:
-            txn = db.query(Transaction).filter(Transaction.razorpay_payment_id == razorpay_id).first()
+        # Find transaction by order_id
+        txn = db.query(Transaction).filter(Transaction.razorpay_order_id == order_id).first()
 
         if txn:
             txn.status = status
@@ -414,34 +472,11 @@ async def razorpay_webhook(merchant_id: int, request: Request, background_tasks:
             if not txn.proof_hash and status == "captured":
                 timestamp = datetime.utcnow().isoformat()
                 txn.proof_hash = generate_proof_hash(txn.utr, amount, timestamp)
-        else:
-            # We never touch the money, we only observe.
-            # If we receive a webhook for a payment not initiated by our app (e.g. static QR code)
-            # We create a new transaction record just from observing the event
-            utr = generate_utr()
-            timestamp = datetime.utcnow().isoformat()
-            proof_hash = generate_proof_hash(utr, amount, timestamp)
 
-            txn = Transaction(
-                merchant_id=merchant.id,
-                amount=amount,
-                utr=utr,
-                razorpay_payment_id=razorpay_id,
-                razorpay_order_id=order_id,
-                status=status,
-                customer_phone=payload.get("contact"),
-                customer_email=payload.get("email"),
-                description=payload.get("description", "Direct Payment Observed"),
-                proof_hash=proof_hash
-            )
-            db.add(txn)
-
-        db.commit()
-        db.refresh(txn)
-
-        # Send notification to merchant (could use WebSocket in production)
-        if txn:
+            db.commit()
+            db.refresh(txn)
             return {"status": "success", "transaction_id": txn.id, "utr": txn.utr}
+
         return {"status": "ignored"}
 
     elif event == "payment.failed":
@@ -543,16 +578,20 @@ async def process_refund(
 
     refund_amount = req.amount or txn.amount
 
-    try:
-        # Call Razorpay refund API
-        refund_data = {
-            "amount": int(refund_amount * 100),
-            "notes": {"reason": req.reason}
-        }
-        refund_res = razorpay_client.payment.refund(txn.razorpay_payment_id, refund_data)
-        refund_id = refund_res.get("id")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Refund failed: {str(e)}")
+    if razorpay_client:
+        try:
+            # Call Razorpay refund API
+            refund_data = {
+                "amount": int(refund_amount * 100),
+                "notes": {"reason": req.reason}
+            }
+            refund_res = razorpay_client.payment.refund(txn.razorpay_payment_id, refund_data)
+            refund_id = refund_res.get("id")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Refund failed: {str(e)}")
+    else:
+        # Simulated refund ID when Razorpay is not configured
+        refund_id = f"rfnd_sim_{generate_utr()}"
 
     # Update transaction
     txn.status = "refunded"
@@ -653,7 +692,13 @@ async def simulate_webhook(current: Merchant = Depends(get_current_merchant), db
 # ─── Health Check ────────────────────────────────────────────────────────────
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "service": "paysure", "version": "1.0.0"}
+    return {
+        "status": "ok",
+        "service": "paysure",
+        "version": "1.0.0",
+        "groq_configured": groq_client is not None,
+        "razorpay_configured": razorpay_client is not None
+    }
 
 # ─── Razorpay Payment Creation ────────────────────────────────────────
 @app.post("/api/payments/create-order")
@@ -663,6 +708,9 @@ def create_order(
     db: Session = Depends(get_db)
 ):
     """Create a real order in Razorpay"""
+    if not razorpay_client:
+        raise HTTPException(status_code=503, detail="Razorpay not configured")
+
     amount_in_paise = int(req.amount * 100)
     
     order_data = {
@@ -674,14 +722,8 @@ def create_order(
         }
     }
     
-    # For a true platform, we should use the merchant's keys if they have them configured.
-    # Falling back to global client for demo purposes if merchant keys are missing.
     try:
-        if current.razorpay_key_id and current.razorpay_key_secret:
-            merchant_client = razorpay.Client(auth=(current.razorpay_key_id, current.razorpay_key_secret))
-            razorpay_order = merchant_client.order.create(data=order_data)
-        else:
-            razorpay_order = razorpay_client.order.create(data=order_data)
+        razorpay_order = razorpay_client.order.create(data=order_data)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
         

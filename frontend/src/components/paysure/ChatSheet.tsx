@@ -2,7 +2,9 @@ import { useState, useRef, useEffect } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, Sparkles } from "lucide-react";
+import { Send, Sparkles, Loader2 } from "lucide-react";
+import { sendChatMessage } from "@/lib/api";
+import type { Transaction } from "@/data/transactions";
 
 interface Msg {
   id: string;
@@ -11,58 +13,50 @@ interface Msg {
 }
 
 const initial: Msg[] = [
-  { id: "1", from: "bot", text: "Hi! I'm PaySure Help. Ask me about payments, refunds or settlements." },
+  { id: "1", from: "bot", text: "Hi! I'm PaySure Help — powered by Gemini AI. Ask me about your payments, disputed transactions, or refund advice." },
 ];
 
 const QUICK = [
-  "How do refunds work?",
-  "Today's settlement?",
-  "Why is a payment verifying?",
+  "Which transactions are disputed?",
+  "Any duplicates to refund?",
+  "Summarize today's activity",
 ];
-
-const reply = (q: string) => {
-  const t = q.toLowerCase();
-  if (t.includes("refund")) return "Tap any duplicate transaction → 'Refund Duplicate Payment'. Money returns instantly via UPI.";
-  if (t.includes("settle")) return "Today's settlement so far: ₹12,480. It credits to your bank by 10 PM.";
-  if (t.includes("verify") || t.includes("verifying")) return "A payment shows VERIFYING when the bank hasn't sent us a final confirmation. Usually clears in 3 seconds.";
-  return "Got it. A teammate will guide you. Meanwhile, you can check transaction details from the home screen.";
-};
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  transactions: Transaction[];
 }
 
-export const ChatSheet = ({ open, onOpenChange }: Props) => {
+export const ChatSheet = ({ open, onOpenChange, transactions }: Props) => {
   const [msgs, setMsgs] = useState<Msg[]>(initial);
   const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs]);
 
-  useEffect(() => {
-    if (open && msgs.length === 1) {
-      fetch("http://localhost:8000/api/insights/daily")
-        .then(res => res.json())
-        .then(data => {
-          if (data && data.summary) {
-            setMsgs(m => [...m, { id: "insights", from: "bot", text: data.summary }]);
-          }
-        })
-        .catch(err => console.error(err));
-    }
-  }, [open, msgs.length]);
-
-  const send = (text: string) => {
-    if (!text.trim()) return;
+  const send = async (text: string) => {
+    if (!text.trim() || loading) return;
     const id = Date.now().toString();
-    setMsgs((m) => [...m, { id, from: "me", text }]);
+    const userMsg: Msg = { id, from: "me", text };
+    setMsgs((m) => [...m, userMsg]);
     setInput("");
-    setTimeout(() => {
-      setMsgs((m) => [...m, { id: id + "b", from: "bot", text: reply(text) }]);
-    }, 450);
+    setLoading(true);
+
+    try {
+      const reply = await sendChatMessage(text, msgs, transactions);
+      setMsgs((m) => [...m, { id: id + "b", from: "bot", text: reply }]);
+    } catch {
+      setMsgs((m) => [
+        ...m,
+        { id: id + "b", from: "bot", text: "Sorry, I couldn't connect to the server. Make sure the backend is running on port 8000." },
+      ]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -73,7 +67,7 @@ export const ChatSheet = ({ open, onOpenChange }: Props) => {
             <Sparkles className="h-5 w-5 text-primary" />
             PaySure Help
           </SheetTitle>
-          <p className="text-xs text-muted-foreground font-normal">Ask anything about your payments</p>
+          <p className="text-xs text-muted-foreground font-normal">AI-powered insights about your payments</p>
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-muted/30">
@@ -90,6 +84,16 @@ export const ChatSheet = ({ open, onOpenChange }: Props) => {
               </div>
             </div>
           ))}
+          {loading && (
+            <div className="flex justify-start">
+              <div className="bg-card border border-border rounded-2xl rounded-bl-sm px-4 py-3">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-xs">Analyzing transactions…</span>
+                </div>
+              </div>
+            </div>
+          )}
           <div ref={endRef} />
         </div>
 
@@ -99,7 +103,8 @@ export const ChatSheet = ({ open, onOpenChange }: Props) => {
               <button
                 key={q}
                 onClick={() => send(q)}
-                className="shrink-0 text-xs px-3 py-1.5 rounded-full border border-border bg-card hover:bg-accent transition-colors"
+                disabled={loading}
+                className="shrink-0 text-xs px-3 py-1.5 rounded-full border border-border bg-card hover:bg-accent transition-colors disabled:opacity-50"
               >
                 {q}
               </button>
@@ -112,11 +117,12 @@ export const ChatSheet = ({ open, onOpenChange }: Props) => {
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Type your question…"
+              placeholder="Ask about your transactions…"
               className="flex-1"
+              disabled={loading}
             />
-            <Button type="submit" size="icon" className="shrink-0">
-              <Send className="h-4 w-4" />
+            <Button type="submit" size="icon" className="shrink-0" disabled={loading}>
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
           </form>
         </div>

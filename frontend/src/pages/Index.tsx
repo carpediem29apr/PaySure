@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Header } from "@/components/paysure/Header";
 import { TransactionCard } from "@/components/paysure/TransactionCard";
 import { TransactionDetail } from "@/components/paysure/TransactionDetail";
@@ -39,11 +39,9 @@ const Index = () => {
     }
   };
 
-  import("react").then((React) => {
-    React.useEffect(() => {
-      fetchTxns();
-    }, []);
-  });
+  useEffect(() => {
+    fetchTxns();
+  }, []);
 
   const loadRazorpay = () => {
     return new Promise((resolve) => {
@@ -248,7 +246,7 @@ const Index = () => {
         onRefund={handleRefund}
       />
       <ProfileSheet open={profileOpen} onOpenChange={setProfileOpen} />
-      <ChatSheet open={chatOpen} onOpenChange={setChatOpen} />
+      <ChatSheet open={chatOpen} onOpenChange={setChatOpen} transactions={txns} />
     </div>
   );
 };
