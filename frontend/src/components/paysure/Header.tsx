@@ -1,3 +1,4 @@
+import { API_BASE } from "@/lib/api";
 import { useEffect, useState } from "react";
 import { merchantProfile } from "@/data/transactions";
 
@@ -21,7 +22,7 @@ export const Header = () => {
   }, []);
 
   useEffect(() => {
-    fetch("http://localhost:8000/api/auth/me")
+    fetch(`${API_BASE}/api/auth/me`)
       .then(res => res.json())
       .then(data => {
         if (data && data.business_name) {

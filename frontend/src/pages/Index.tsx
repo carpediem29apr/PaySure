@@ -7,6 +7,7 @@ import { ChatSheet } from "@/components/paysure/ChatSheet";
 import { type Transaction } from "@/data/transactions";
 import { User, MessageCircle, Plus } from "lucide-react";
 import axios from "axios";
+import { API_BASE } from "@/lib/api";
 
 const Index = () => {
   const [txns, setTxns] = useState<Transaction[]>([]);
@@ -19,7 +20,7 @@ const Index = () => {
   // Fetch transactions from FastAPI backend
   const fetchTxns = async () => {
     try {
-      const res = await axios.get("http://localhost:8000/api/transactions");
+      const res = await axios.get(`${API_BASE}/api/transactions`);
       // Map backend fields to frontend Transaction interface
       const mapped = res.data.map((t: any) => ({
         id: t.id.toString(),
@@ -61,7 +62,7 @@ const Index = () => {
 
     setLoading(true);
     try {
-      const res = await axios.post(`http://localhost:8000/api/payments/create-order`, {
+      const res = await axios.post(`${API_BASE}/api/payments/create-order`, {
         amount,
         customer_phone: "+919876543210",
         description: "Test Payment from PaySure UI"
@@ -83,7 +84,7 @@ const Index = () => {
         order_id: res.data.razorpay_order_id,
         handler: async function (response: any) {
           try {
-            await axios.post(`http://localhost:8000/api/payments/confirm`, {
+            await axios.post(`${API_BASE}/api/payments/confirm`, {
               transaction_id: res.data.transaction.id,
               razorpay_payment_id: response.razorpay_payment_id
             });
@@ -128,7 +129,7 @@ const Index = () => {
   const handleRefund = async (id: string) => {
     setLoading(true);
     try {
-      const res = await axios.post(`http://localhost:8000/api/refund`, {
+      const res = await axios.post(`${API_BASE}/api/refund`, {
         transaction_id: parseInt(id),
         reason: "Duplicate payment requested refund"
       });

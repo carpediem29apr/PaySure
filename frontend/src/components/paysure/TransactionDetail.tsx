@@ -1,3 +1,4 @@
+import { API_BASE } from "@/lib/api";
 import { useState } from "react";
 import type { Transaction } from "@/data/transactions";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -31,7 +32,7 @@ export const TransactionDetail = ({ txn, open, onOpenChange, onRefund }: Props) 
 
   const handleProof = async () => {
     try {
-      const res = await fetch(`http://localhost:8000/api/proof/generate`, {
+      const res = await fetch(`${API_BASE}/api/proof/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ transaction_id: parseInt(txn.id) })
