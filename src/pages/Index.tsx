@@ -35,6 +35,17 @@ const Index = () => {
   const verifyingCount = txns.filter((t) => t.status === "verifying").length;
   const duplicateCount = txns.filter((t) => t.status === "duplicate").length;
 
+  // Group txns by date while preserving chronological order
+  const groupedTxns: { date: string; txns: Transaction[] }[] = [];
+  txns.forEach((txn) => {
+    let group = groupedTxns.find((g) => g.date === txn.date);
+    if (!group) {
+      group = { date: txn.date, txns: [] };
+      groupedTxns.push(group);
+    }
+    group.txns.push(txn);
+  });
+
   return (
     <div className="min-h-screen bg-background pb-28">
       <Header />
@@ -54,16 +65,23 @@ const Index = () => {
       </section>
 
       <main className="px-5 pt-5">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
             Transaction Log
           </h2>
           <span className="text-[11px] text-muted-foreground font-mono-num">{txns.length} entries</span>
         </div>
 
-        <div className="space-y-2.5">
-          {txns.map((t) => (
-            <TransactionCard key={t.id} txn={t} onClick={() => openDetail(t.id)} />
+        <div className="space-y-6">
+          {groupedTxns.map((group) => (
+            <div key={group.date}>
+              <h3 className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest mb-3 px-1">{group.date}</h3>
+              <div className="space-y-2.5">
+                {group.txns.map((t) => (
+                  <TransactionCard key={t.id} txn={t} onClick={() => openDetail(t.id)} />
+                ))}
+              </div>
+            </div>
           ))}
         </div>
 

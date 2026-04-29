@@ -13,6 +13,7 @@ export const TransactionCard = ({ txn, onClick }: Props) => {
   const isDuplicate = txn.type === "duplicate" && txn.status === "duplicate";
   const isRefunded = txn.status === "refunded";
   const isVerifying = txn.status === "verifying";
+  const isReceived = txn.status === "received";
 
   const statusConfig = isRefunded
     ? {
@@ -28,11 +29,18 @@ export const TransactionCard = ({ txn, onClick }: Props) => {
         text: "text-duplicate",
         border: "border-l-duplicate",
       }
-    : {
+    : isVerifying
+    ? {
         label: "VERIFYING",
         bg: "bg-verifying-bg",
         text: "text-verifying",
         border: "border-l-verifying",
+      }
+    : {
+        label: "RECEIVED",
+        bg: "bg-success-bg",
+        text: "text-success",
+        border: "border-l-success",
       };
 
   return (
