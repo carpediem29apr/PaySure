@@ -41,16 +41,16 @@ paysure/
 
 ---
 
-## ⚙️ Tech Stack
+## ⚙️ Tech Stack & Architecture
 
 | Layer | Technology |
 |-------|-----------|
 | Backend | FastAPI + SQLAlchemy + SQLite |
-| Auth | JWT (email/password) |
-| Payments | Razorpay Test Mode + Webhooks |
+| Architecture | **Platform Partner Model** (We never touch the money; merchants bring their own Razorpay account, we observe webhooks) |
+| Payments | Razorpay API + Dynamic Webhooks |
 | SMS | Twilio |
 | AI | OpenAI GPT-4 (insights) |
-| Frontend | React + Tailwind CSS + qrcode.react |
+| Frontend | React + Tailwind CSS (Vite) |
 | QR Codes | Client-side generation (qrcode.react) |
 
 ---
@@ -191,12 +191,21 @@ DATABASE_URL=sqlite:///./paysure.db
 
 ---
 
-## 📝 Razorpay Webhook Setup
+## 📝 Platform Architecture & Webhook Setup
 
+This platform uses the **Platform Partner Model**. We do not process payments through a master account. Instead, the platform sits on top of the merchant's existing infrastructure.
+
+**How it works:**
+1. The merchant brings their own Razorpay account.
+2. They configure **your** platform webhook URL in **their** Razorpay dashboard.
+3. Razorpay sends signed webhooks directly to your platform.
+4. **We never touch the money** — we only observe the event and generate the Trust Proofs.
+
+**Setup Instructions for Merchants:**
 1. Go to Razorpay Dashboard → Settings → Webhooks
-2. Add webhook URL: `https://your-ngrok-url/api/webhooks/razorpay`
-3. Select events: `payment.captured`, `payment.failed`
-4. Copy webhook secret to `.env`
+2. Add the unique merchant webhook URL: `https://your-domain.com/api/webhooks/razorpay/{merchant_id}`
+3. Select events: `payment.captured`, `payment.failed`, `payment.authorized`
+4. Copy the webhook secret they create into the PaySure dashboard (saved as their `razorpay_webhook_secret`).
 
 For local testing, use [ngrok](https://ngrok.com/):
 ```bash

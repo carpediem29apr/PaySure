@@ -61,6 +61,7 @@ class Merchant(Base):
     phone = Column(String)
     razorpay_key_id = Column(String, nullable=True)
     razorpay_key_secret = Column(String, nullable=True)
+    razorpay_webhook_secret = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     is_active = Column(Boolean, default=True)
 
@@ -184,7 +185,15 @@ def get_current_merchant(credentials: Optional[HTTPAuthorizationCredentials] = D
         # For demo purposes, return or create a default merchant
         merchant = db.query(Merchant).first()
         if not merchant:
-            merchant = Merchant(email="sharma.store@gmail.com", business_name="Sharma General Store", phone="+919810233421", hashed_password="dummy")
+            merchant = Merchant(
+                email="sharma.store@gmail.com", 
+                business_name="Sharma General Store", 
+                phone="+919810233421", 
+                hashed_password="dummy",
+                razorpay_webhook_secret=RAZORPAY_WEBHOOK_SECRET,
+                razorpay_key_id=RAZORPAY_KEY_ID,
+                razorpay_key_secret=RAZORPAY_KEY_SECRET
+            )
             db.add(merchant)
             db.commit()
             db.refresh(merchant)
@@ -357,14 +366,19 @@ def get_transaction(
     return txn
 
 # ─── Razorpay Webhook ────────────────────────────────────────────────────────
-@app.post("/api/webhooks/razorpay")
-async def razorpay_webhook(request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    """Handle Razorpay payment webhooks"""
+@app.post("/api/webhooks/razorpay/{merchant_id}")
+async def razorpay_webhook(merchant_id: int, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """Handle Razorpay payment webhooks as a Platform Partner"""
+    merchant = db.query(Merchant).filter(Merchant.id == merchant_id).first()
+    if not merchant or not merchant.razorpay_webhook_secret:
+        raise HTTPException(status_code=400, detail="Invalid merchant or missing webhook secret")
+
     body = await request.body()
     signature = request.headers.get("X-Razorpay-Signature", "")
 
     try:
-        razorpay_client.utility.verify_webhook_signature(body.decode("utf-8"), signature, RAZORPAY_WEBHOOK_SECRET)
+        # We only observe the event. Verify using the merchant's unique webhook secret
+        razorpay_client.utility.verify_webhook_signature(body.decode("utf-8"), signature, merchant.razorpay_webhook_secret)
     except razorpay.errors.SignatureVerificationError:
         raise HTTPException(status_code=400, detail="Invalid signature")
 
@@ -382,8 +396,12 @@ async def razorpay_webhook(request: Request, background_tasks: BackgroundTasks, 
         amount = payload.get("amount", 0) / 100  # Convert from paise
         status = "captured" if event == "payment.captured" else "authorized"
 
-        # Find transaction by order_id
-        txn = db.query(Transaction).filter(Transaction.razorpay_order_id == order_id).first()
+        # Find transaction by order_id or payment_id if order_id is missing
+        txn = None
+        if order_id:
+            txn = db.query(Transaction).filter(Transaction.razorpay_order_id == order_id).first()
+        else:
+            txn = db.query(Transaction).filter(Transaction.razorpay_payment_id == razorpay_id).first()
 
         if txn:
             txn.status = status
@@ -395,8 +413,26 @@ async def razorpay_webhook(request: Request, background_tasks: BackgroundTasks, 
                 timestamp = datetime.utcnow().isoformat()
                 txn.proof_hash = generate_proof_hash(txn.utr, amount, timestamp)
         else:
-            # Fallback if webhook received before order is in DB (rare)
-            pass
+            # We never touch the money, we only observe.
+            # If we receive a webhook for a payment not initiated by our app (e.g. static QR code)
+            # We create a new transaction record just from observing the event
+            utr = generate_utr()
+            timestamp = datetime.utcnow().isoformat()
+            proof_hash = generate_proof_hash(utr, amount, timestamp)
+
+            txn = Transaction(
+                merchant_id=merchant.id,
+                amount=amount,
+                utr=utr,
+                razorpay_payment_id=razorpay_id,
+                razorpay_order_id=order_id,
+                status=status,
+                customer_phone=payload.get("contact"),
+                customer_email=payload.get("email"),
+                description=payload.get("description", "Direct Payment Observed"),
+                proof_hash=proof_hash
+            )
+            db.add(txn)
 
         db.commit()
         db.refresh(txn)
@@ -608,8 +644,14 @@ def create_order(
         }
     }
     
+    # For a true platform, we should use the merchant's keys if they have them configured.
+    # Falling back to global client for demo purposes if merchant keys are missing.
     try:
-        razorpay_order = razorpay_client.order.create(data=order_data)
+        if current.razorpay_key_id and current.razorpay_key_secret:
+            merchant_client = razorpay.Client(auth=(current.razorpay_key_id, current.razorpay_key_secret))
+            razorpay_order = merchant_client.order.create(data=order_data)
+        else:
+            razorpay_order = razorpay_client.order.create(data=order_data)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
         
