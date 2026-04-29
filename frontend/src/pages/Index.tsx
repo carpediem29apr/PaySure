@@ -80,7 +80,15 @@ const Index = () => {
         name: "PaySure",
         description: "Payment for order",
         order_id: res.data.razorpay_order_id,
-        handler: function (response: any) {
+        handler: async function (response: any) {
+          try {
+            await axios.post(`http://localhost:8000/api/payments/confirm`, {
+              transaction_id: res.data.transaction.id,
+              razorpay_payment_id: response.razorpay_payment_id
+            });
+          } catch (e) {
+            console.error("Failed to confirm payment", e);
+          }
           alert(`Payment successful! ID: ${response.razorpay_payment_id}`);
           fetchTxns();
         },
