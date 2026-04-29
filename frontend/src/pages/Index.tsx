@@ -1,28 +1,38 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { Header } from "@/components/paysure/Header";
 import { TransactionCard } from "@/components/paysure/TransactionCard";
 import { TransactionDetail } from "@/components/paysure/TransactionDetail";
 import { ProfileSheet } from "@/components/paysure/ProfileSheet";
 import { ChatSheet } from "@/components/paysure/ChatSheet";
 import { type Transaction } from "@/data/transactions";
-import { User, MessageCircle, Plus, BarChart3 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { User, MessageCircle, Plus, BarChart3, Loader2 } from "lucide-react";
 import axios from "axios";
-import { API_BASE } from "@/lib/api";
+import { API_BASE, preloadRazorpay, warmUpBackend, isBackendReady } from "@/lib/api";
 
 const Index = () => {
+  const navigate = useNavigate();
+
   const [txns, setTxns] = useState<Transaction[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
+  const [backendWaking, setBackendWaking] = useState(!isBackendReady());
+
+  // Auth guard: redirect to login if not authenticated
+  useEffect(() => {
+    const currentUser = localStorage.getItem("paysure_current_user");
+    if (!currentUser) {
+      navigate("/", { replace: true });
+    }
+  }, [navigate]);
 
   // Fetch transactions from FastAPI backend
-  const fetchTxns = async () => {
+  const fetchTxns = useCallback(async () => {
     try {
-      const res = await axios.get(`${API_BASE}/api/transactions`);
+      const res = await axios.get(`${API_BASE}/api/transactions`, { timeout: 15000 });
       // Map backend fields to frontend Transaction interface
       const mapped = res.data.map((t: any) => ({
         id: t.id.toString(),
@@ -37,26 +47,22 @@ const Index = () => {
         refundedAt: t.refund_id ? new Date().toLocaleTimeString() : undefined
       }));
       setTxns(mapped);
+      setBackendWaking(false);
     } catch (err) {
       console.error("Failed to fetch transactions", err);
     }
-  };
-
-  useEffect(() => {
-    fetchTxns();
-    const interval = setInterval(fetchTxns, 5000);
-    return () => clearInterval(interval);
   }, []);
 
-  const loadRazorpay = () => {
-    return new Promise((resolve) => {
-      const script = document.createElement("script");
-      script.src = "https://checkout.razorpay.com/v1/checkout.js";
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
-      document.body.appendChild(script);
+  useEffect(() => {
+    // Wake up backend first, then fetch
+    warmUpBackend().then((ok) => {
+      setBackendWaking(!ok);
+      fetchTxns();
     });
-  };
+    // Poll every 10s (not 5s — easier on free tier)
+    const interval = setInterval(fetchTxns, 10000);
+    return () => clearInterval(interval);
+  }, [fetchTxns]);
 
   const createPayment = async () => {
     const amountStr = window.prompt("Enter amount to charge (in ₹):", "100");
@@ -66,15 +72,18 @@ const Index = () => {
 
     setLoading(true);
     try {
-      const res = await axios.post(`${API_BASE}/api/payments/create-order`, {
-        amount,
-        customer_phone: "+919876543210",
-        description: "Test Payment from PaySure UI"
-      });
+      // Both requests run in parallel: create order + ensure Razorpay is loaded
+      const [res, razorpayReady] = await Promise.all([
+        axios.post(`${API_BASE}/api/payments/create-order`, {
+          amount,
+          customer_phone: "+919876543210",
+          description: "Test Payment from PaySure UI"
+        }, { timeout: 30000 }),
+        preloadRazorpay()
+      ]);
       
-      const resLoaded = await loadRazorpay();
-      if (!resLoaded) {
-        alert("Razorpay SDK failed to load");
+      if (!razorpayReady) {
+        alert("Razorpay SDK failed to load. Please check your internet connection.");
         setLoading(false);
         return;
       }
@@ -91,7 +100,7 @@ const Index = () => {
             await axios.post(`${API_BASE}/api/payments/confirm`, {
               transaction_id: res.data.transaction.id,
               razorpay_payment_id: response.razorpay_payment_id
-            });
+            }, { timeout: 15000 });
           } catch (e) {
             console.error("Failed to confirm payment", e);
           }
@@ -106,18 +115,19 @@ const Index = () => {
         }
       };
 
-      console.log("Create Order Response:", res.data);
-      console.log("Razorpay Options:", options);
-
       const paymentObject = new (window as any).Razorpay(options);
       paymentObject.on('payment.failed', function (response: any) {
         console.error("Razorpay Payment Failed Event:", response.error);
         alert("Payment Failed: " + response.error.description);
       });
       paymentObject.open();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Caught error in createPayment:", err);
-      alert("Failed to create payment");
+      if (err?.code === "ECONNABORTED" || err?.message?.includes("timeout")) {
+        alert("Server is waking up. Please wait a few seconds and try again.");
+      } else {
+        alert("Failed to create payment. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -171,6 +181,14 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background pb-28">
       <Header />
+
+      {/* Backend warm-up indicator */}
+      {backendWaking && (
+        <div className="mx-5 mt-3 px-4 py-2.5 rounded-lg bg-amber-50 border border-amber-200 flex items-center gap-3 animate-pulse">
+          <Loader2 className="h-4 w-4 animate-spin text-amber-600" />
+          <p className="text-xs text-amber-700 font-medium">Waking up server… first load takes ~15s</p>
+        </div>
+      )}
 
       {/* Summary strip */}
       <section className="px-5 pt-4">

@@ -1,13 +1,28 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff, ShieldCheck, ArrowRight, User, Phone, Lock, CreditCard, Hash, Building2, Calendar } from "lucide-react";
+import { Eye, EyeOff, ShieldCheck, ArrowRight, User, Phone, Lock, CreditCard, Hash, Building2, Calendar, Mail, AlertCircle } from "lucide-react";
+import { warmUpBackend } from "@/lib/api";
 
 type Mode = "login" | "signup";
+
+interface StoredUser {
+  name: string;
+  shopName: string;
+  phone: string;
+  email: string;
+  password: string;
+  age: string;
+  aadhaar: string;
+  pan: string;
+  merchantId: string;
+  gstin: string;
+}
 
 const Login = () => {
   const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>("login");
   const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState("");
 
   // Login fields
   const [phone, setPhone] = useState("");
@@ -15,6 +30,7 @@ const Login = () => {
 
   // Signup fields
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [age, setAge] = useState("");
   const [aadhaar, setAadhaar] = useState("");
   const [pan, setPan] = useState("");
@@ -24,17 +40,111 @@ const Login = () => {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Wake up the backend while user fills in the login form
+  useEffect(() => { warmUpBackend(); }, []);
+
+  const handlePhoneChange = (value: string) => {
+    // Only allow numeric input
+    const numericOnly = value.replace(/\D/g, "");
+    if (numericOnly.length <= 10) {
+      setPhone(numericOnly);
+    }
+  };
+
+  const getStoredUsers = (): StoredUser[] => {
+    try {
+      const raw = localStorage.getItem("paysure_users");
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
+
+    // Validate phone length
+    if (phone.length !== 10) {
+      setError("Phone number must be exactly 10 digits.");
+      return;
+    }
+
+    if (!password) {
+      setError("Password is required.");
+      return;
+    }
+
     setIsSubmitting(true);
-    // Simulate a short loading state, then navigate
-    setTimeout(() => {
-      navigate("/dashboard");
-    }, 800);
+
+    if (mode === "signup") {
+      // --- SIGN UP ---
+      if (!name.trim()) {
+        setError("Full name is required.");
+        setIsSubmitting(false);
+        return;
+      }
+      if (!shopName.trim()) {
+        setError("Shop / Business name is required.");
+        setIsSubmitting(false);
+        return;
+      }
+      if (!email.trim()) {
+        setError("Email is required.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      const users = getStoredUsers();
+      const exists = users.find((u) => u.phone === phone);
+      if (exists) {
+        setError("This phone number is already registered. Please login.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      const newUser: StoredUser = {
+        name,
+        shopName,
+        phone,
+        email,
+        password,
+        age,
+        aadhaar,
+        pan,
+        merchantId,
+        gstin,
+      };
+
+      users.push(newUser);
+      localStorage.setItem("paysure_users", JSON.stringify(users));
+      localStorage.setItem("paysure_current_user", JSON.stringify(newUser));
+
+      setTimeout(() => {
+        navigate("/dashboard");
+      }, 600);
+    } else {
+      // --- LOGIN ---
+      const users = getStoredUsers();
+      const found = users.find((u) => u.phone === phone && u.password === password);
+
+      if (!found) {
+        setError("Invalid phone number or password. Please try again or sign up.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      localStorage.setItem("paysure_current_user", JSON.stringify(found));
+
+      setTimeout(() => {
+        navigate("/dashboard");
+      }, 600);
+    }
   };
 
   const switchMode = () => {
     setMode(mode === "login" ? "signup" : "login");
+    setError("");
   };
 
   return (
@@ -71,7 +181,7 @@ const Login = () => {
           <div className="flex rounded-lg bg-secondary/60 p-1 mb-6">
             <button
               type="button"
-              onClick={() => setMode("login")}
+              onClick={() => { setMode("login"); setError(""); }}
               className={`flex-1 py-2 text-sm font-semibold rounded-md transition-all duration-200 ${
                 mode === "login"
                   ? "bg-card text-foreground shadow-sm"
@@ -82,7 +192,7 @@ const Login = () => {
             </button>
             <button
               type="button"
-              onClick={() => setMode("signup")}
+              onClick={() => { setMode("signup"); setError(""); }}
               className={`flex-1 py-2 text-sm font-semibold rounded-md transition-all duration-200 ${
                 mode === "signup"
                   ? "bg-card text-foreground shadow-sm"
@@ -93,13 +203,21 @@ const Login = () => {
             </button>
           </div>
 
+          {/* Error message */}
+          {error && (
+            <div className="flex items-start gap-2 mb-4 p-3 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-xs">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === "signup" && (
               <>
                 {/* Full Name */}
                 <div className="space-y-1.5">
                   <label className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
-                    Full Name
+                    Full Name <span className="text-destructive">*</span>
                   </label>
                   <div className="relative">
                     <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -116,7 +234,7 @@ const Login = () => {
                 {/* Shop / Business Name */}
                 <div className="space-y-1.5">
                   <label className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
-                    Shop / Business Name
+                    Shop / Business Name <span className="text-destructive">*</span>
                   </label>
                   <div className="relative">
                     <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -125,6 +243,23 @@ const Login = () => {
                       value={shopName}
                       onChange={(e) => setShopName(e.target.value)}
                       placeholder="Sharma General Store"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-md border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* Email */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
+                    Email <span className="text-destructive">*</span>
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="vikram@gmail.com"
                       className="w-full pl-10 pr-4 py-2.5 rounded-md border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
                     />
                   </div>
@@ -154,7 +289,7 @@ const Login = () => {
             {/* Phone Number (shared) */}
             <div className="space-y-1.5">
               <label className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
-                Phone Number
+                Phone Number <span className="text-destructive">*</span>
               </label>
               <div className="relative">
                 <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -162,18 +297,23 @@ const Login = () => {
                 <input
                   type="tel"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="98102 33421"
+                  onChange={(e) => handlePhoneChange(e.target.value)}
+                  placeholder="9810233421"
                   maxLength={10}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   className="w-full pl-[4.5rem] pr-4 py-2.5 rounded-md border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all font-mono-num"
                 />
               </div>
+              {phone.length > 0 && phone.length < 10 && (
+                <p className="text-[10px] text-muted-foreground">{phone.length}/10 digits</p>
+              )}
             </div>
 
             {/* Password (shared) */}
             <div className="space-y-1.5">
               <label className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium">
-                Password
+                Password <span className="text-destructive">*</span>
               </label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

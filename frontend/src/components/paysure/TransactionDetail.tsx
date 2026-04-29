@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { Transaction } from "@/data/transactions";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Check, Copy, Share2, FileText, AlertOctagon, Clock } from "lucide-react";
+import { Check, Copy, Share2, FileText, AlertOctagon, Clock, Mail, QrCode } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 interface Props {
@@ -24,11 +24,17 @@ const Row = ({ label, value, mono = false }: { label: string; value: string; mon
 
 export const TransactionDetail = ({ txn, open, onOpenChange, onRefund }: Props) => {
   const [proofGenerated, setProofGenerated] = useState(false);
+  const [showQR, setShowQR] = useState(false);
 
   if (!txn) return null;
 
   const isDuplicate = txn.type === "duplicate" && txn.status === "duplicate";
   const isRefunded = txn.status === "refunded";
+  const isVerifying = txn.status === "verifying";
+  const isReceived = txn.status === "received";
+
+  const verifyUrl = `${window.location.origin}/v/${txn.utr}`;
+  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(verifyUrl)}`;
 
   const handleProof = async () => {
     try {
@@ -40,7 +46,7 @@ export const TransactionDetail = ({ txn, open, onOpenChange, onRefund }: Props) 
       const data = await res.json();
       if (data.verification_url) {
         setProofGenerated(true);
-        txn.utr = data.utr; // To use in share
+        txn.utr = data.utr;
         toast({ title: "Proof generated", description: "Share link is ready." });
       } else {
         throw new Error(data.detail || "Failed to generate proof");
@@ -51,7 +57,7 @@ export const TransactionDetail = ({ txn, open, onOpenChange, onRefund }: Props) 
   };
 
   const handleShare = () => {
-    navigator.clipboard?.writeText(`${window.location.origin}/v/${txn.utr}`);
+    navigator.clipboard?.writeText(verifyUrl);
     toast({ title: "Link copied", description: "Send it to the customer." });
   };
 
@@ -60,13 +66,46 @@ export const TransactionDetail = ({ txn, open, onOpenChange, onRefund }: Props) 
     toast({ title: `₹${txn.amount} refunded`, description: "Sent back to the customer instantly." });
   };
 
+  const handleEmailBank = () => {
+    const subject = encodeURIComponent(`Payment Dispute - UTR ${txn.utr} - Amount ₹${txn.amount}`);
+    const body = encodeURIComponent(
+`Dear Sir/Madam,
+
+I am writing to report a payment dispute for the following transaction:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+TRANSACTION DETAILS
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+Amount: ₹${txn.amount.toLocaleString("en-IN")}
+UTR: ${txn.utr}
+Date & Time: ${txn.date} at ${txn.time}
+Customer: ${txn.customerName || "N/A"}
+Payment Method: ${txn.paymentMethod || "UPI"}
+Status on Merchant End: ${txn.status?.toUpperCase()}
+
+ISSUE: The customer's UPI app shows "Payment Successful" and their account has been debited. However, the above amount has NOT been credited to my merchant account.
+
+PROOF OF TRANSACTION:
+Verification Link: ${verifyUrl}
+
+Please investigate and credit the amount to my account at the earliest.
+
+Regards,
+Sharma General Store
+PaySure Merchant ID: PSR-1`
+    );
+    window.open(`https://mail.google.com/mail/?view=cm&fs=1&su=${subject}&body=${body}`, "_blank");
+    toast({ title: "Gmail opened", description: "Dispute email drafted with transaction proof." });
+  };
+
   const handleClose = () => {
     setProofGenerated(false);
+    setShowQR(false);
     onOpenChange(false);
   };
 
   return (
-    <Sheet open={open} onOpenChange={(o) => { if (!o) setProofGenerated(false); onOpenChange(o); }}>
+    <Sheet open={open} onOpenChange={(o) => { if (!o) { setProofGenerated(false); setShowQR(false); } onOpenChange(o); }}>
       <SheetContent side="bottom" className="rounded-t-2xl p-0 max-h-[92vh] overflow-y-auto">
         <SheetHeader className="px-5 pt-5 pb-3 text-left">
           <div className="mx-auto h-1 w-10 rounded-full bg-border mb-3" />
@@ -88,6 +127,10 @@ export const TransactionDetail = ({ txn, open, onOpenChange, onRefund }: Props) 
               ) : isDuplicate ? (
                 <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded bg-duplicate-bg text-duplicate text-[11px] font-bold tracking-wider">
                   <AlertOctagon className="h-3 w-3" /> DUPLICATE DETECTED
+                </div>
+              ) : isReceived ? (
+                <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded bg-green-100 text-green-700 text-[11px] font-bold tracking-wider">
+                  <Check className="h-3 w-3" /> RECEIVED
                 </div>
               ) : (
                 <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded bg-verifying-bg text-verifying text-[11px] font-bold tracking-wider animate-status-pulse">
@@ -113,6 +156,35 @@ export const TransactionDetail = ({ txn, open, onOpenChange, onRefund }: Props) 
             </div>
           </div>
 
+          {/* QR Code Block */}
+          <div className="mt-4 receipt-card p-4">
+            <button
+              onClick={() => setShowQR(!showQR)}
+              className="w-full flex items-center justify-between"
+            >
+              <div className="flex items-center gap-2">
+                <QrCode className="h-4 w-4 text-primary" />
+                <span className="text-sm font-semibold">Payment QR Code</span>
+              </div>
+              <span className="text-xs text-muted-foreground">{showQR ? "Hide" : "Show"}</span>
+            </button>
+            {showQR && (
+              <div className="mt-3 animate-slide-up text-center">
+                <img
+                  src={qrCodeUrl}
+                  alt="Transaction QR Code"
+                  className="mx-auto rounded-lg border border-border shadow-sm"
+                  width={200}
+                  height={200}
+                />
+                <p className="text-[10px] text-muted-foreground mt-2 break-all px-4">{verifyUrl}</p>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Customer scans this → sees payment proof instantly
+                </p>
+              </div>
+            )}
+          </div>
+
           {/* Duplicate warning block */}
           {isDuplicate && (
             <div className="mt-4 receipt-card border-duplicate/30 bg-duplicate-bg p-4">
@@ -129,14 +201,14 @@ export const TransactionDetail = ({ txn, open, onOpenChange, onRefund }: Props) 
           )}
 
           {/* Proof preview */}
-          {proofGenerated && txn.type === "unfinished" && (
+          {proofGenerated && (
             <div className="mt-4 receipt-card p-4 animate-slide-up">
               <div className="flex items-center gap-2 mb-2">
                 <FileText className="h-4 w-4 text-primary" />
                 <p className="text-sm font-semibold">Proof link ready</p>
               </div>
               <div className="bg-muted rounded p-2.5 font-mono-num text-xs text-foreground break-all">
-                {window.location.origin}/v/{txn.utr}
+                {verifyUrl}
               </div>
               <Button onClick={handleShare} variant="outline" className="w-full mt-3 gap-2">
                 <Share2 className="h-4 w-4" /> Share with customer
@@ -155,12 +227,23 @@ export const TransactionDetail = ({ txn, open, onOpenChange, onRefund }: Props) 
               </Button>
             )}
 
-            {txn.type === "unfinished" && !isRefunded && !proofGenerated && (
+            {!isRefunded && !proofGenerated && (
               <Button
                 onClick={handleProof}
                 className="w-full h-12 text-base font-semibold gap-2"
               >
                 <FileText className="h-4 w-4" /> Generate Proof
+              </Button>
+            )}
+
+            {/* Email Bank - for failed/pending/verifying transactions */}
+            {(isVerifying || txn.status === "failed" || txn.status === "pending") && (
+              <Button
+                onClick={handleEmailBank}
+                variant="outline"
+                className="w-full h-12 text-base font-semibold gap-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+              >
+                <Mail className="h-4 w-4" /> Email Dispute to Bank
               </Button>
             )}
 

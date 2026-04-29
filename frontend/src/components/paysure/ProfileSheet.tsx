@@ -1,4 +1,3 @@
-import { API_BASE } from "@/lib/api";
 import { useState, useEffect } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { merchantProfile } from "@/data/transactions";
@@ -23,24 +22,29 @@ export const ProfileSheet = ({ open, onOpenChange }: Props) => {
 
   useEffect(() => {
     if (open) {
-      fetch(`${API_BASE}/api/auth/me`)
-        .then(res => res.json())
-        .then(data => {
-          if (data && data.business_name) {
-            setMerchant({
-              ...merchantProfile,
-              name: data.business_name,
-              phone: data.phone,
-              email: data.email,
-              merchantId: `PSR-${data.id}`
-            });
-          }
-        })
-        .catch(err => console.error(err));
+      // Load the current user from localStorage (set during login/signup)
+      try {
+        const raw = localStorage.getItem("paysure_current_user");
+        if (raw) {
+          const user = JSON.parse(raw);
+          setMerchant({
+            ...merchantProfile,
+            name: user.shopName || merchantProfile.name,
+            ownerName: user.name || merchantProfile.ownerName,
+            phone: user.phone ? `+91 ${user.phone}` : merchantProfile.phone,
+            email: user.email || merchantProfile.email,
+            merchantId: user.merchantId || merchantProfile.merchantId,
+            gstin: user.gstin || merchantProfile.gstin,
+          });
+        }
+      } catch (err) {
+        console.error("Failed to load user profile:", err);
+      }
     }
   }, [open]);
 
   const handleLogout = () => {
+    localStorage.removeItem("paysure_current_user");
     onOpenChange(false);
     navigate("/");
   };
