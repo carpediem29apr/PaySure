@@ -622,6 +622,34 @@ def send_test_sms(req: SMSSendRequest, current: Merchant = Depends(get_current_m
     result = send_sms(req.phone, req.message)
     return result
 
+# ─── Simulate Webhook (Hackathon Demo) ───────────────────────────────────────
+@app.post("/api/test/simulate-webhook")
+async def simulate_webhook(current: Merchant = Depends(get_current_merchant), db: Session = Depends(get_db)):
+    """Simulates Razorpay sending a webhook for a Static QR payment"""
+    # 1. Generate fake payment data
+    amount = float(random.choice([150, 450, 1299, 240, 50, 999]))
+    razorpay_payment_id = f"pay_{''.join(random.choices(string.ascii_letters + string.digits, k=14))}"
+    utr = generate_utr()
+    timestamp = datetime.utcnow().isoformat()
+    proof_hash = generate_proof_hash(utr, amount, timestamp)
+
+    # 2. Directly log it into the database just like the webhook observer does
+    txn = Transaction(
+        merchant_id=current.id,
+        amount=amount,
+        utr=utr,
+        razorpay_payment_id=razorpay_payment_id,
+        status="captured",
+        customer_phone="+919876543210",
+        description="Static QR UPI Payment (Simulated)",
+        proof_hash=proof_hash
+    )
+    db.add(txn)
+    db.commit()
+    db.refresh(txn)
+
+    return {"success": True, "message": "Simulated Webhook Received", "transaction": TransactionResponse.from_orm(txn)}
+
 # ─── Health Check ────────────────────────────────────────────────────────────
 @app.get("/api/health")
 def health():

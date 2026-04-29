@@ -95,10 +95,17 @@ const Index = () => {
         }
       };
 
+      console.log("Create Order Response:", res.data);
+      console.log("Razorpay Options:", options);
+
       const paymentObject = new (window as any).Razorpay(options);
+      paymentObject.on('payment.failed', function (response: any) {
+        console.error("Razorpay Payment Failed Event:", response.error);
+        alert("Payment Failed: " + response.error.description);
+      });
       paymentObject.open();
     } catch (err) {
-      console.error(err);
+      console.error("Caught error in createPayment:", err);
       alert("Failed to create payment");
     } finally {
       setLoading(false);
@@ -173,6 +180,21 @@ const Index = () => {
             Transaction Log
           </h2>
           <div className="flex items-center gap-3">
+            <button 
+              onClick={async () => {
+                setLoading(true);
+                try {
+                  await axios.post('http://localhost:8000/api/test/simulate-webhook');
+                  fetchTxns();
+                  alert("Customer paid via GPay/PhonePe! Webhook received instantly.");
+                } catch(e) { console.error(e); }
+                setLoading(false);
+              }}
+              disabled={loading}
+              className="flex items-center gap-1 bg-secondary text-secondary-foreground px-3 py-1.5 rounded-full text-xs font-medium shadow-sm hover:bg-secondary/80 active:scale-95 transition-all"
+            >
+              Simulate Static QR
+            </button>
             <button 
               onClick={createPayment} 
               disabled={loading}
