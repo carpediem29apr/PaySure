@@ -677,6 +677,32 @@ async def process_refund(
         "transaction_id": txn.id
     }
 
+@app.post("/api/proof/generate")
+async def generate_proof(req: ProofRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """Generate cryptographic proof for a transaction and optionally send SMS"""
+    txn = db.query(Transaction).filter(Transaction.id == req.transaction_id).first()
+    if not txn:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+        
+    merchant = txn.merchant
+    
+    if not txn.proof_hash:
+        timestamp = datetime.utcnow().isoformat()
+        txn.proof_hash = generate_proof_hash(txn.utr, txn.amount, timestamp)
+        db.commit()
+        db.refresh(txn)
+
+    base_url = os.getenv("FRONTEND_URL", "https://settleproof.com")
+    verify_url = f"{base_url}/v/{txn.utr}"
+    
+    # If customer phone is provided explicitly, or we already have it, send SMS proof
+    phone_to_sms = req.customer_phone or txn.customer_phone
+    if phone_to_sms:
+        msg = f"Your payment of Rs.{txn.amount:.2f} to {merchant.business_name} is confirmed. View Receipt: {verify_url}"
+        background_tasks.add_task(send_sms, phone_to_sms, msg)
+
+    return {"verification_url": verify_url, "utr": txn.utr}
+
 @app.get("/api/refund/{refund_id}")
 def get_refund(refund_id: str, db: Session = Depends(get_db)):
     """Public endpoint to verify refund"""

@@ -51,7 +51,7 @@ export const TransactionDetail = ({ txn, open, onOpenChange, onRefund }: Props) 
   };
 
   const handleShare = () => {
-    navigator.clipboard?.writeText(`https://settleproof.com/v/${txn.utr}`);
+    navigator.clipboard?.writeText(`${window.location.origin}/v/${txn.utr}`);
     toast({ title: "Link copied", description: "Send it to the customer." });
   };
 
@@ -136,7 +136,7 @@ export const TransactionDetail = ({ txn, open, onOpenChange, onRefund }: Props) 
                 <p className="text-sm font-semibold">Proof link ready</p>
               </div>
               <div className="bg-muted rounded p-2.5 font-mono-num text-xs text-foreground break-all">
-                https://paysure.in/p/{txn.utr}
+                {window.location.origin}/v/{txn.utr}
               </div>
               <Button onClick={handleShare} variant="outline" className="w-full mt-3 gap-2">
                 <Share2 className="h-4 w-4" /> Share with customer
