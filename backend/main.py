@@ -13,6 +13,8 @@ import hashlib
 import hmac
 import jwt
 import os
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 import json
 import random
 import string
@@ -301,7 +303,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:8080", "http://localhost:3000", "http://127.0.0.1:8080"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -675,7 +677,7 @@ def create_order(
         "success": True,
         "transaction": TransactionResponse.from_orm(txn),
         "razorpay_order_id": razorpay_order["id"],
-        "key_id": RAZORPAY_KEY_ID
+        "key_id": current.razorpay_key_id or RAZORPAY_KEY_ID
     }
 
 # ─── Main ────────────────────────────────────────────────────────────────────
