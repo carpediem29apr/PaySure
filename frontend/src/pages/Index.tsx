@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Header } from "@/components/paysure/Header";
 import { TransactionCard } from "@/components/paysure/TransactionCard";
 import { TransactionDetail } from "@/components/paysure/TransactionDetail";
 import { ProfileSheet } from "@/components/paysure/ProfileSheet";
 import { ChatSheet } from "@/components/paysure/ChatSheet";
 import { initialTransactions, type Transaction } from "@/data/transactions";
-import { User, MessageCircle } from "lucide-react";
+import { User, MessageCircle, Plus } from "lucide-react";
+import axios from "axios";
 
 const Index = () => {
   const [txns, setTxns] = useState<Transaction[]>(initialTransactions);
@@ -13,6 +14,94 @@ const Index = () => {
   const [detailOpen, setDetailOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  // Fetch transactions from FastAPI backend
+  const fetchTxns = async () => {
+    try {
+      const res = await axios.get("http://localhost:8000/api/transactions");
+      // Map backend fields to frontend Transaction interface
+      const mapped = res.data.map((t: any) => ({
+        id: t.id.toString(),
+        type: t.status === "captured" ? "standard" : (t.status === "failed" ? "unfinished" : "unfinished"),
+        amount: t.amount,
+        status: t.status === "captured" ? "received" : (t.status === "refunded" ? "refunded" : "verifying"),
+        date: new Date(t.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
+        time: new Date(t.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }),
+        customerName: t.customer_phone || "Walk-in",
+        utr: t.utr,
+        paymentMethod: t.description || "UPI Payment",
+        refundedAt: t.refund_id ? new Date().toLocaleTimeString() : undefined
+      }));
+      setTxns([...mapped, ...initialTransactions]);
+    } catch (err) {
+      console.error("Failed to fetch transactions", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchTxns();
+  }, []);
+
+  const loadRazorpay = () => {
+    return new Promise((resolve) => {
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  const createPayment = async () => {
+    const amountStr = window.prompt("Enter amount to charge (in ₹):", "100");
+    if (!amountStr) return;
+    const amount = parseFloat(amountStr);
+    if (isNaN(amount) || amount <= 0) return alert("Invalid amount");
+
+    setLoading(true);
+    try {
+      const res = await axios.post(`http://localhost:8000/api/payments/create-order`, {
+        amount,
+        customer_phone: "+919876543210",
+        description: "Test Payment from PaySure UI"
+      });
+      
+      const resLoaded = await loadRazorpay();
+      if (!resLoaded) {
+        alert("Razorpay SDK failed to load");
+        setLoading(false);
+        return;
+      }
+
+      const options = {
+        key: res.data.key_id,
+        amount: res.data.transaction.amount * 100,
+        currency: "INR",
+        name: "PaySure",
+        description: "Payment for order",
+        order_id: res.data.razorpay_order_id,
+        handler: function (response: any) {
+          alert(`Payment successful! ID: ${response.razorpay_payment_id}`);
+          fetchTxns();
+        },
+        prefill: {
+          contact: "+919876543210"
+        },
+        theme: {
+          color: "#000000"
+        }
+      };
+
+      const paymentObject = new (window as any).Razorpay(options);
+      paymentObject.open();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to create payment");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const selected = txns.find((t) => t.id === selectedId) ?? null;
 
@@ -21,15 +110,27 @@ const Index = () => {
     setDetailOpen(true);
   };
 
-  const handleRefund = (id: string) => {
-    const stamp = new Date().toLocaleTimeString("en-IN", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
-    setTxns((all) =>
-      all.map((t) => (t.id === id ? { ...t, status: "refunded", refundedAt: stamp } : t)),
-    );
+  const handleRefund = async (id: string) => {
+    setLoading(true);
+    try {
+      const res = await axios.post(`http://localhost:8000/api/refund`, {
+        transaction_id: parseInt(id),
+        reason: "Duplicate payment requested refund"
+      });
+      const stamp = new Date().toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      });
+      setTxns((all) =>
+        all.map((t) => (t.id === id ? { ...t, status: "refunded", refundedAt: stamp } : t)),
+      );
+    } catch (err) {
+      console.error("Refund failed", err);
+      alert("Failed to process refund");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const verifyingCount = txns.filter((t) => t.status === "verifying").length;
@@ -69,7 +170,16 @@ const Index = () => {
           <h2 className="text-sm font-semibold tracking-wide uppercase text-muted-foreground">
             Transaction Log
           </h2>
-          <span className="text-[11px] text-muted-foreground font-mono-num">{txns.length} entries</span>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={createPayment} 
+              disabled={loading}
+              className="flex items-center gap-1 bg-primary text-primary-foreground px-3 py-1.5 rounded-full text-xs font-medium shadow-sm active:scale-95 transition-all"
+            >
+              <Plus className="w-3 h-3" /> Create Payment
+            </button>
+            <span className="text-[11px] text-muted-foreground font-mono-num">{txns.length} entries</span>
+          </div>
         </div>
 
         <div className="space-y-6">

@@ -13,9 +13,28 @@ const formatDateTime = (d: Date) =>
 
 export const Header = () => {
   const [now, setNow] = useState(new Date());
+  const [merchant, setMerchant] = useState<any>(merchantProfile);
+
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    fetch("http://localhost:8000/api/auth/me")
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.business_name) {
+          setMerchant({
+            ...merchantProfile,
+            name: data.business_name,
+            phone: data.phone,
+            email: data.email,
+            merchantId: `PSR-${data.id}`
+          });
+        }
+      })
+      .catch(err => console.error(err));
   }, []);
 
   return (
@@ -42,10 +61,10 @@ export const Header = () => {
         <div className="mt-2 flex items-center gap-2">
           <div className="h-2 w-2 rounded-full bg-success animate-status-pulse" />
           <p className="text-sm font-medium text-foreground truncate">
-            {merchantProfile.name}
+            {merchant.name}
           </p>
           <span className="text-[10px] text-muted-foreground ml-auto font-mono-num">
-            {merchantProfile.merchantId}
+            {merchant.merchantId}
           </span>
         </div>
       </div>
