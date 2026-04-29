@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff, ShieldCheck, ArrowRight, User, Phone, Lock, CreditCard, Hash, Building2, Calendar, Mail, AlertCircle } from "lucide-react";
-import { warmUpBackend } from "@/lib/api";
+import { warmUpBackend, API_BASE } from "@/lib/api";
 
 type Mode = "login" | "signup";
 
