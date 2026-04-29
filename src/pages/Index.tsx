@@ -112,15 +112,27 @@ const Index = () => {
     setDetailOpen(true);
   };
 
-  const handleRefund = (id: string) => {
-    const stamp = new Date().toLocaleTimeString("en-IN", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
-    setTxns((all) =>
-      all.map((t) => (t.id === id ? { ...t, status: "refunded", refundedAt: stamp } : t)),
-    );
+  const handleRefund = async (id: string) => {
+    setLoading(true);
+    try {
+      const res = await axios.post(`http://localhost:8000/api/refund`, {
+        transaction_id: parseInt(id),
+        reason: "Duplicate payment requested refund"
+      });
+      const stamp = new Date().toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      });
+      setTxns((all) =>
+        all.map((t) => (t.id === id ? { ...t, status: "refunded", refundedAt: stamp } : t)),
+      );
+    } catch (err) {
+      console.error("Refund failed", err);
+      alert("Failed to process refund");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const verifyingCount = txns.filter((t) => t.status === "verifying").length;

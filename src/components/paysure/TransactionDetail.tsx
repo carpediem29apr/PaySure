@@ -29,13 +29,28 @@ export const TransactionDetail = ({ txn, open, onOpenChange, onRefund }: Props) 
   const isDuplicate = txn.type === "duplicate" && txn.status === "duplicate";
   const isRefunded = txn.status === "refunded";
 
-  const handleProof = () => {
-    setProofGenerated(true);
-    toast({ title: "Proof generated", description: "Share link is ready." });
+  const handleProof = async () => {
+    try {
+      const res = await fetch(`http://localhost:8000/api/proof/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transaction_id: parseInt(txn.id) })
+      });
+      const data = await res.json();
+      if (data.verification_url) {
+        setProofGenerated(true);
+        txn.utr = data.utr; // To use in share
+        toast({ title: "Proof generated", description: "Share link is ready." });
+      } else {
+        throw new Error(data.detail || "Failed to generate proof");
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
   };
 
   const handleShare = () => {
-    navigator.clipboard?.writeText(`https://paysure.in/p/${txn.utr}`);
+    navigator.clipboard?.writeText(`https://settleproof.com/v/${txn.utr}`);
     toast({ title: "Link copied", description: "Send it to the customer." });
   };
 

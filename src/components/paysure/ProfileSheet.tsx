@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { merchantProfile } from "@/data/transactions";
 import { Store } from "lucide-react";
@@ -15,6 +16,26 @@ const Field = ({ label, value, mono = false }: { label: string; value: string; m
 );
 
 export const ProfileSheet = ({ open, onOpenChange }: Props) => {
+  const [merchant, setMerchant] = useState<any>(merchantProfile);
+
+  useEffect(() => {
+    if (open) {
+      fetch("http://localhost:8000/api/auth/me")
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.business_name) {
+            setMerchant({
+              ...merchantProfile,
+              name: data.business_name,
+              phone: data.phone,
+              email: data.email,
+              merchantId: `PSR-${data.id}`
+            });
+          }
+        })
+        .catch(err => console.error(err));
+    }
+  }, [open]);
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="left" className="w-full sm:max-w-md p-0 overflow-y-auto">
@@ -24,8 +45,8 @@ export const ProfileSheet = ({ open, onOpenChange }: Props) => {
               <Store className="h-6 w-6 text-primary" />
             </div>
             <div>
-              <p className="text-base font-semibold">{merchantProfile.name}</p>
-              <p className="text-xs text-muted-foreground font-normal">{merchantProfile.ownerName}</p>
+              <p className="text-base font-semibold">{merchant.name}</p>
+              <p className="text-xs text-muted-foreground font-normal">{merchant.ownerName}</p>
             </div>
           </SheetTitle>
         </SheetHeader>
@@ -34,16 +55,16 @@ export const ProfileSheet = ({ open, onOpenChange }: Props) => {
           <div className="receipt-card p-5">
             <div className="text-center pb-3">
               <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Merchant Profile</p>
-              <p className="font-mono-num text-xs text-foreground mt-1">{merchantProfile.merchantId}</p>
+              <p className="font-mono-num text-xs text-foreground mt-1">{merchant.merchantId}</p>
             </div>
             <div className="receipt-divider my-2" />
             <div className="divide-y divide-dashed divide-border">
-              <Field label="Owner" value={merchantProfile.ownerName} />
-              <Field label="Phone" value={merchantProfile.phone} mono />
-              <Field label="Email" value={merchantProfile.email} />
-              <Field label="UPI ID" value={merchantProfile.upiId} mono />
-              <Field label="GSTIN" value={merchantProfile.gstin} mono />
-              <Field label="Address" value={merchantProfile.address} />
+              <Field label="Owner" value={merchant.ownerName} />
+              <Field label="Phone" value={merchant.phone} mono />
+              <Field label="Email" value={merchant.email} />
+              <Field label="UPI ID" value={merchant.upiId} mono />
+              <Field label="GSTIN" value={merchant.gstin} mono />
+              <Field label="Address" value={merchant.address} />
             </div>
             <div className="receipt-divider my-3" />
             <p className="text-center text-[10px] uppercase tracking-widest text-muted-foreground">

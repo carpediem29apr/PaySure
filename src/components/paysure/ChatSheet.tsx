@@ -42,6 +42,19 @@ export const ChatSheet = ({ open, onOpenChange }: Props) => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs]);
 
+  useEffect(() => {
+    if (open && msgs.length === 1) {
+      fetch("http://localhost:8000/api/insights/daily")
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.summary) {
+            setMsgs(m => [...m, { id: "insights", from: "bot", text: data.summary }]);
+          }
+        })
+        .catch(err => console.error(err));
+    }
+  }, [open, msgs.length]);
+
   const send = (text: string) => {
     if (!text.trim()) return;
     const id = Date.now().toString();
