@@ -33,7 +33,9 @@ export const TransactionDetail = ({ txn, open, onOpenChange, onRefund }: Props) 
   const isVerifying = txn.status === "verifying";
   const isReceived = txn.status === "received";
 
-  const verifyUrl = `${window.location.origin}/v/${txn.utr}`;
+  // Always use the deployed Vercel URL for QR codes (not localhost)
+  const appUrl = import.meta.env.VITE_APP_URL || (window.location.hostname === "localhost" ? "https://paysure-five.vercel.app" : window.location.origin);
+  const verifyUrl = `${appUrl}/v/${txn.utr}`;
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(verifyUrl)}`;
 
   const handleProof = async () => {
