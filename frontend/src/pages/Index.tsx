@@ -4,12 +4,12 @@ import { TransactionCard } from "@/components/paysure/TransactionCard";
 import { TransactionDetail } from "@/components/paysure/TransactionDetail";
 import { ProfileSheet } from "@/components/paysure/ProfileSheet";
 import { ChatSheet } from "@/components/paysure/ChatSheet";
-import { initialTransactions, type Transaction } from "@/data/transactions";
+import { type Transaction } from "@/data/transactions";
 import { User, MessageCircle, Plus } from "lucide-react";
 import axios from "axios";
 
 const Index = () => {
-  const [txns, setTxns] = useState<Transaction[]>(initialTransactions);
+  const [txns, setTxns] = useState<Transaction[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -33,7 +33,7 @@ const Index = () => {
         paymentMethod: t.description || "UPI Payment",
         refundedAt: t.refund_id ? new Date().toLocaleTimeString() : undefined
       }));
-      setTxns([...mapped, ...initialTransactions]);
+      setTxns(mapped);
     } catch (err) {
       console.error("Failed to fetch transactions", err);
     }
@@ -54,9 +54,10 @@ const Index = () => {
   };
 
   const createPayment = async () => {
-    // Generate a random amount between 100 and 1000 instead of using window.prompt
-    // to prevent browser popup blockers from silencing the action
-    const amount = Math.floor(Math.random() * 900) + 100;
+    const amountStr = window.prompt("Enter amount to charge (in ₹):", "100");
+    if (!amountStr) return;
+    const amount = parseFloat(amountStr);
+    if (isNaN(amount) || amount <= 0) return alert("Invalid amount");
 
     setLoading(true);
     try {
@@ -185,21 +186,6 @@ const Index = () => {
             Transaction Log
           </h2>
           <div className="flex items-center gap-3">
-            <button 
-              onClick={async () => {
-                setLoading(true);
-                try {
-                  await axios.post('http://localhost:8000/api/test/simulate-webhook');
-                  fetchTxns();
-                  alert("Customer paid via GPay/PhonePe! Webhook received instantly.");
-                } catch(e) { console.error(e); }
-                setLoading(false);
-              }}
-              disabled={loading}
-              className="flex items-center gap-1 bg-secondary text-secondary-foreground px-3 py-1.5 rounded-full text-xs font-medium shadow-sm hover:bg-secondary/80 active:scale-95 transition-all"
-            >
-              Simulate Static QR
-            </button>
             <button 
               onClick={createPayment} 
               disabled={loading}
