@@ -549,42 +549,6 @@ async def razorpay_webhook(merchant_id: int, request: Request, background_tasks:
 
     return {"status": "ignored", "event": event}
 
-# ─── Proof & Verification ────────────────────────────────────────────────────
-@app.post("/api/proof/generate")
-def generate_proof(
-    req: ProofRequest,
-    current: Merchant = Depends(get_current_merchant),
-    db: Session = Depends(get_db)
-):
-    """Generate and send payment proof to customer"""
-    txn = db.query(Transaction).filter(
-        Transaction.id == req.transaction_id,
-        Transaction.merchant_id == current.id
-    ).first()
-
-    if not txn:
-        raise HTTPException(status_code=404, detail="Transaction not found")
-
-    # Generate verification URL
-    base_url = "https://settleproof.com"  # Your domain
-    verify_url = f"{base_url}/v/{txn.utr}"
-
-    # Send SMS if phone provided
-    phone = req.customer_phone or txn.customer_phone
-    if phone:
-        message = f"Your payment of ₹{txn.amount:.2f} to {current.business_name} is confirmed. Verify: {verify_url}"
-        sms_result = send_sms(phone, message)
-    else:
-        sms_result = {"success": False, "error": "No phone number"}
-
-    return {
-        "transaction_id": txn.id,
-        "utr": txn.utr,
-        "verification_url": verify_url,
-        "proof_hash": txn.proof_hash,
-        "sms_sent": sms_result.get("success", False),
-        "sms_details": sms_result
-    }
 
 @app.get("/api/verify/{utr}")
 def verify_payment(utr: str, db: Session = Depends(get_db)):
@@ -783,6 +747,45 @@ async def simulate_webhook(background_tasks: BackgroundTasks, current: Merchant 
         background_tasks.add_task(send_sms, current.phone, merch_msg)
 
     return {"success": True, "message": "Simulated Webhook Received", "transaction": TransactionResponse.from_orm(txn)}
+
+# ─── Reconciliation (Staff Mode: 1-Tap Audit) ────────────────────────────────
+@app.get("/api/reconcile")
+def reconcile(current: Merchant = Depends(get_current_merchant), db: Session = Depends(get_db)):
+    """Staff Mode: 1-Tap daily reconciliation showing Expected vs Received"""
+    today = datetime.utcnow().date()
+    txns = db.query(Transaction).filter(
+        Transaction.merchant_id == current.id,
+        Transaction.created_at >= today
+    ).all()
+
+    captured = [t for t in txns if t.status == "captured"]
+    pending = [t for t in txns if t.status in ["pending", "authorized"]]
+    failed = [t for t in txns if t.status == "failed"]
+    refunded = [t for t in txns if t.status == "refunded"]
+
+    missing = []
+    for t in pending + failed:
+        missing.append({
+            "utr": t.utr,
+            "amount": t.amount,
+            "time": t.created_at.strftime("%I:%M %p") if t.created_at else "N/A",
+            "phone": t.customer_phone or "Unknown",
+            "status": t.status
+        })
+
+    return {
+        "date": today.strftime("%d %B %Y"),
+        "total_transactions": len(txns),
+        "captured_count": len(captured),
+        "captured_amount": sum(t.amount for t in captured),
+        "pending_count": len(pending),
+        "pending_amount": sum(t.amount for t in pending),
+        "failed_count": len(failed),
+        "failed_amount": sum(t.amount for t in failed),
+        "refunded_count": len(refunded),
+        "refunded_amount": sum(t.refund_amount or t.amount for t in refunded),
+        "missing": missing
+    }
 
 # ─── Health Check ────────────────────────────────────────────────────────────
 @app.get("/api/health")
