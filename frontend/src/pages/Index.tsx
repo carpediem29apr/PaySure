@@ -182,13 +182,7 @@ const Index = () => {
     <div className="min-h-screen bg-background pb-28">
       <Header />
 
-      {/* Backend warm-up indicator */}
-      {backendWaking && (
-        <div className="mx-5 mt-3 px-4 py-2.5 rounded-lg bg-amber-50 border border-amber-200 flex items-center gap-3 animate-pulse">
-          <Loader2 className="h-4 w-4 animate-spin text-amber-600" />
-          <p className="text-xs text-amber-700 font-medium">Waking up server… first load takes ~15s</p>
-        </div>
-      )}
+
 
       {/* Summary strip */}
       <section className="px-5 pt-4">

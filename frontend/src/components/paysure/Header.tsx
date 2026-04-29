@@ -22,20 +22,23 @@ export const Header = () => {
   }, []);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/auth/me`)
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.business_name) {
-          setMerchant({
-            ...merchantProfile,
-            name: data.business_name,
-            phone: data.phone,
-            email: data.email,
-            merchantId: `PSR-${data.id}`
-          });
-        }
-      })
-      .catch(err => console.error(err));
+    // Load the current logged-in user's data from localStorage
+    try {
+      const raw = localStorage.getItem("paysure_current_user");
+      if (raw) {
+        const user = JSON.parse(raw);
+        setMerchant({
+          ...merchantProfile,
+          name: user.shopName || merchantProfile.name,
+          ownerName: user.name || merchantProfile.ownerName,
+          phone: user.phone ? `+91 ${user.phone}` : merchantProfile.phone,
+          email: user.email || merchantProfile.email,
+          merchantId: user.merchantId || merchantProfile.merchantId,
+        });
+      }
+    } catch (err) {
+      console.error("Failed to load user for header:", err);
+    }
   }, []);
 
   return (
