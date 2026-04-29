@@ -27,7 +27,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Add parent dir to path so we can import from ai/
+# Add parent dir to path so we can import from ai/ (works both locally and on Render)
+sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from ai.gemini_config import build_chat_prompt, DAILY_INSIGHTS_PROMPT, format_transactions
 
