@@ -179,7 +179,17 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-def get_current_merchant(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)):
+def get_current_merchant(credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False)), db: Session = Depends(get_db)):
+    if credentials is None:
+        # For demo purposes, return or create a default merchant
+        merchant = db.query(Merchant).first()
+        if not merchant:
+            merchant = Merchant(email="sharma.store@gmail.com", business_name="Sharma General Store", phone="+919810233421", hashed_password="dummy")
+            db.add(merchant)
+            db.commit()
+            db.refresh(merchant)
+        return merchant
+        
     token = credentials.credentials
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
