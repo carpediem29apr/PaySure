@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { merchantProfile } from "@/data/transactions";
-import { Store } from "lucide-react";
+import { Store, LogOut } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 interface Props {
   open: boolean;
@@ -16,6 +17,7 @@ const Field = ({ label, value, mono = false }: { label: string; value: string; m
 );
 
 export const ProfileSheet = ({ open, onOpenChange }: Props) => {
+  const navigate = useNavigate();
   const [merchant, setMerchant] = useState<any>(merchantProfile);
 
   useEffect(() => {
@@ -36,6 +38,12 @@ export const ProfileSheet = ({ open, onOpenChange }: Props) => {
         .catch(err => console.error(err));
     }
   }, [open]);
+
+  const handleLogout = () => {
+    onOpenChange(false);
+    navigate("/");
+  };
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="left" className="w-full sm:max-w-md p-0 overflow-y-auto">
@@ -71,6 +79,15 @@ export const ProfileSheet = ({ open, onOpenChange }: Props) => {
               Verified Merchant · PaySure
             </p>
           </div>
+
+          {/* Logout Button */}
+          <button
+            onClick={handleLogout}
+            className="w-full mt-4 py-3 rounded-md border border-destructive/30 bg-destructive/5 text-destructive font-semibold text-sm flex items-center justify-center gap-2 hover:bg-destructive/10 active:scale-[0.98] transition-all duration-150"
+          >
+            <LogOut className="h-4 w-4" />
+            Log Out
+          </button>
         </div>
       </SheetContent>
     </Sheet>
