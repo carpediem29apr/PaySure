@@ -443,12 +443,50 @@ def confirm_payment(req: PaymentConfirmRequest, background_tasks: BackgroundTask
     if txn["status"] != "captured":
         ph = generate_proof_hash(txn["utr"], txn["amount"], datetime.utcnow().isoformat()) if not txn.get("proof_hash") else txn["proof_hash"]
         update_transaction(txn["id"], {"status": "captured", "razorpay_payment_id": req.razorpay_payment_id, "proof_hash": ph})
-        verify_url = f"https://settleproof.com/v/{txn['utr']}"
+        verify_url = f"https://paysurefinal.vercel.app/v/{txn['utr']}"
         if txn.get("customer_phone"):
             background_tasks.add_task(send_sms, txn["customer_phone"], f"Payment of Rs.{txn['amount']:.2f} to {current['business_name']} confirmed. Verify: {verify_url}")
         if current.get("phone"):
             background_tasks.add_task(send_sms, current["phone"], f"PaySure: Received Rs.{txn['amount']:.2f}. UTR: {txn['utr']}. Verify: {verify_url}")
     return {"success": True}
+
+# ─── Customer Verification (Public — no auth needed) ─────────────────────────
+@app.get("/api/verify/{utr}")
+def verify_payment(utr: str):
+    """Public endpoint: Customer scans QR → sees payment proof instantly.
+    No authentication required — this is the customer-facing trust page."""
+    txn = get_transaction_by_utr(utr)
+    if not txn:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    
+    # Get the merchant name
+    merchant = get_merchant_by_id(txn.get("merchant_id", ""))
+    merchant_name = merchant.get("business_name", "Unknown Merchant") if merchant else "Unknown Merchant"
+    
+    created_at = txn.get("created_at")
+    if isinstance(created_at, datetime):
+        ts = created_at.isoformat()
+    elif created_at:
+        ts = str(created_at)
+    else:
+        ts = datetime.utcnow().isoformat()
+    
+    result = {
+        "valid": txn.get("proof_hash") is not None,
+        "amount": txn.get("amount", 0),
+        "currency": "INR",
+        "utr": txn.get("utr", utr),
+        "status": txn.get("status", "pending"),
+        "merchant_name": merchant_name,
+        "timestamp": ts,
+        "description": txn.get("description") or "UPI Payment",
+    }
+    
+    if txn.get("refund_id"):
+        result["refund_id"] = txn["refund_id"]
+        result["refund_amount"] = txn.get("refund_amount")
+    
+    return result
 
 # ─── Health Check ────────────────────────────────────────────────────────────
 @app.get("/api/health")
