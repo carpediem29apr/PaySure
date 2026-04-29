@@ -54,10 +54,9 @@ const Index = () => {
   };
 
   const createPayment = async () => {
-    const amountStr = window.prompt("Enter amount to charge (in ₹):", "100");
-    if (!amountStr) return;
-    const amount = parseFloat(amountStr);
-    if (isNaN(amount) || amount <= 0) return alert("Invalid amount");
+    // Generate a random amount between 100 and 1000 instead of using window.prompt
+    // to prevent browser popup blockers from silencing the action
+    const amount = Math.floor(Math.random() * 900) + 100;
 
     setLoading(true);
     try {
