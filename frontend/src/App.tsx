@@ -6,8 +6,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Login from "./pages/Login.tsx";
 import Index from "./pages/Index.tsx";
 import NotFound from "./pages/NotFound.tsx";
-import VerifyPayment from "./pages/VerifyPayment.tsx";
-import Reconcile from "./pages/Reconcile.tsx";
 
 const queryClient = new QueryClient();
 
@@ -20,8 +18,6 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Login />} />
           <Route path="/dashboard" element={<Index />} />
-          <Route path="/v/:utr" element={<VerifyPayment />} />
-          <Route path="/reconcile" element={<Reconcile />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
@@ -31,4 +27,3 @@ const App = () => (
 );
 
 export default App;
-
