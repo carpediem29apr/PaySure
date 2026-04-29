@@ -1,0 +1,108 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* PaySure Design System — Receipt-inspired, practical, fast */
+
+@layer base {
+  :root {
+    /* Off-white paper background with subtle warm orange tint */
+    --background: 32 40% 97%;
+    --foreground: 25 25% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 25 25% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 25 25% 12%;
+
+    /* Primary: warm trust orange */
+    --primary: 22 90% 52%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 32 30% 93%;
+    --secondary-foreground: 25 25% 12%;
+
+    --muted: 32 25% 94%;
+    --muted-foreground: 25 10% 42%;
+
+    --accent: 32 50% 92%;
+    --accent-foreground: 25 25% 12%;
+
+    --destructive: 0 75% 48%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Status colors */
+    --verifying: 38 95% 50%;
+    --verifying-foreground: 30 60% 15%;
+    --verifying-bg: 42 100% 95%;
+
+    --duplicate: 0 75% 48%;
+    --duplicate-foreground: 0 0% 100%;
+    --duplicate-bg: 0 75% 96%;
+
+    --success: 142 65% 38%;
+    --success-foreground: 0 0% 100%;
+    --success-bg: 142 50% 95%;
+
+    --border: 30 20% 86%;
+    --input: 30 20% 88%;
+    --ring: 22 90% 52%;
+
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  .font-mono-num {
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+}
+
+@layer components {
+  /* Receipt dashed divider */
+  .receipt-divider {
+    background-image: linear-gradient(
+      to right,
+      hsl(var(--border)) 50%,
+      transparent 50%
+    );
+    background-size: 8px 1px;
+    background-repeat: repeat-x;
+    height: 1px;
+    width: 100%;
+  }
+
+  .receipt-card {
+    @apply bg-card border border-border rounded-md;
+  }
+}
+
+@layer utilities {
+  @keyframes status-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
+  }
+  .animate-status-pulse {
+    animation: status-pulse 1.6s ease-in-out infinite;
+  }
+
+  @keyframes slide-up-fade {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate-slide-up {
+    animation: slide-up-fade 0.25s ease-out;
+  }
+}
