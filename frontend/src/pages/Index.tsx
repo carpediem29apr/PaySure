@@ -114,7 +114,7 @@ const Index = () => {
         onRefund={handleRefund}
       />
       <ProfileSheet open={profileOpen} onOpenChange={setProfileOpen} />
-      <ChatSheet open={chatOpen} onOpenChange={setChatOpen} />
+      <ChatSheet open={chatOpen} onOpenChange={setChatOpen} transactions={txns} />
     </div>
   );
 };
