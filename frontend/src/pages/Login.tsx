@@ -99,7 +99,7 @@ const Login = () => {
           const data = await response.json();
           throw new Error(data.detail || "Signup failed");
         }
-        
+
         // Auto-login after signup
         const loginResponse = await fetch(`${API_BASE}/api/auth/login`, {
           method: "POST",
@@ -180,22 +180,20 @@ const Login = () => {
             <button
               type="button"
               onClick={() => { setMode("login"); setError(""); }}
-              className={`flex-1 py-2 text-sm font-semibold rounded-md transition-all duration-200 ${
-                mode === "login"
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
+              className={`flex-1 py-2 text-sm font-semibold rounded-md transition-all duration-200 ${mode === "login"
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+                }`}
             >
               Login
             </button>
             <button
               type="button"
               onClick={() => { setMode("signup"); setError(""); }}
-              className={`flex-1 py-2 text-sm font-semibold rounded-md transition-all duration-200 ${
-                mode === "signup"
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
+              className={`flex-1 py-2 text-sm font-semibold rounded-md transition-all duration-200 ${mode === "signup"
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+                }`}
             >
               Sign Up
             </button>
