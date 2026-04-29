@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { Header } from "@/components/paysure/Header";
 import { TransactionCard } from "@/components/paysure/TransactionCard";
 import { TransactionDetail } from "@/components/paysure/TransactionDetail";
@@ -6,11 +7,12 @@ import { ProfileSheet } from "@/components/paysure/ProfileSheet";
 import { ChatSheet } from "@/components/paysure/ChatSheet";
 import { type Transaction } from "@/data/transactions";
 import { User, MessageCircle, Plus, BarChart3, Loader2 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API_BASE, preloadRazorpay, warmUpBackend, isBackendReady } from "@/lib/api";
 
 const Index = () => {
+  const navigate = useNavigate();
+
   const [txns, setTxns] = useState<Transaction[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -18,7 +20,14 @@ const Index = () => {
   const [chatOpen, setChatOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [backendWaking, setBackendWaking] = useState(!isBackendReady());
-  const navigate = useNavigate();
+
+  // Auth guard: redirect to login if not authenticated
+  useEffect(() => {
+    const currentUser = localStorage.getItem("paysure_current_user");
+    if (!currentUser) {
+      navigate("/", { replace: true });
+    }
+  }, [navigate]);
 
   // Fetch transactions from FastAPI backend
   const fetchTxns = useCallback(async () => {
