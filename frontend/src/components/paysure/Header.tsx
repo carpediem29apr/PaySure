@@ -22,7 +22,12 @@ export const Header = () => {
     <header className="sticky top-0 z-30 bg-background/95 backdrop-blur border-b border-border">
       <div className="px-5 pt-5 pb-4">
         <div className="flex items-baseline justify-between">
-          <div className="flex items-baseline gap-2">
+          <div className="flex items-center gap-2">
+            <img 
+              src="/favicon.png" 
+              alt="PaySure Logo" 
+              className="h-8 w-8 object-contain"
+            />
             <h1 className="text-2xl font-bold tracking-tight text-foreground">
               Pay<span className="text-primary">Sure</span>
             </h1>

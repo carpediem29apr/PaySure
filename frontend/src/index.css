@@ -60,7 +60,7 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'Inter', 'Roboto', sans-serif;
   }
 
   .font-mono-num {
