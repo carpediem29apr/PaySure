@@ -453,17 +453,22 @@ def get_transaction(
     return txn
 
 # ─── Razorpay Webhook ────────────────────────────────────────────────────────
-@app.post("/api/webhooks/razorpay")
-async def razorpay_webhook(request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    """Handle Razorpay payment webhooks"""
-    if not razorpay_client:
-        raise HTTPException(status_code=503, detail="Razorpay not configured")
+@app.post("/api/webhooks/razorpay/{merchant_id}")
+async def razorpay_webhook(merchant_id: int, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """Handle Razorpay payment webhooks for specific merchants (Platform-Partner Model)"""
+    merchant = db.query(Merchant).filter(Merchant.id == merchant_id).first()
+    if not merchant:
+        raise HTTPException(status_code=404, detail="Merchant not found")
 
     body = await request.body()
     signature = request.headers.get("X-Razorpay-Signature", "")
 
+    webhook_secret = merchant.razorpay_webhook_secret or RAZORPAY_WEBHOOK_SECRET
+
+    import razorpay
+    client = razorpay.Client(auth=("", ""))
     try:
-        razorpay_client.utility.verify_webhook_signature(body.decode("utf-8"), signature, RAZORPAY_WEBHOOK_SECRET)
+        client.utility.verify_webhook_signature(body.decode("utf-8"), signature, webhook_secret)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid signature")
 
@@ -478,27 +483,58 @@ async def razorpay_webhook(request: Request, background_tasks: BackgroundTasks, 
     if event in ["payment.captured", "payment.authorized"]:
         razorpay_id = payload.get("id")
         order_id = payload.get("order_id")
-        amount = payload.get("amount", 0) / 100  # Convert from paise
+        amount = payload.get("amount", 0) / 100
+        contact = payload.get("contact")
+        email = payload.get("email")
+        description = payload.get("description", "UPI Payment")
         status = "captured" if event == "payment.captured" else "authorized"
 
-        # Find transaction by order_id
-        txn = db.query(Transaction).filter(Transaction.razorpay_order_id == order_id).first()
+        txn = None
+        if order_id:
+            txn = db.query(Transaction).filter(Transaction.razorpay_order_id == order_id).first()
+            
+        if not txn and razorpay_id:
+            txn = db.query(Transaction).filter(Transaction.razorpay_payment_id == razorpay_id).first()
 
         if txn:
             txn.status = status
             txn.razorpay_payment_id = razorpay_id
             txn.updated_at = datetime.utcnow()
-            
-            # Optionally generate proof hash if not already generated
-            if not txn.proof_hash and status == "captured":
-                timestamp = datetime.utcnow().isoformat()
-                txn.proof_hash = generate_proof_hash(txn.utr, amount, timestamp)
+        else:
+            # STATIC QR PAYMENT: Transaction doesn't exist in our DB yet!
+            utr = generate_utr()
+            txn = Transaction(
+                merchant_id=merchant.id,
+                amount=amount,
+                utr=utr,
+                status=status,
+                razorpay_payment_id=razorpay_id,
+                razorpay_order_id=order_id,
+                customer_phone=contact,
+                customer_email=email,
+                description=f"Static QR Payment"
+            )
+            db.add(txn)
 
-            db.commit()
-            db.refresh(txn)
-            return {"status": "success", "transaction_id": txn.id, "utr": txn.utr}
+        if not txn.proof_hash and status == "captured":
+            timestamp = datetime.utcnow().isoformat()
+            txn.proof_hash = generate_proof_hash(txn.utr, amount, timestamp)
 
-        return {"status": "ignored"}
+        db.commit()
+        db.refresh(txn)
+
+        # Send automated SMS to both parties
+        if status == "captured":
+            base_url = "https://settleproof.com"
+            verify_url = f"{base_url}/v/{txn.utr}"
+            if txn.customer_phone:
+                cust_msg = f"Your payment of Rs.{txn.amount:.2f} to {merchant.business_name} is confirmed. Verify: {verify_url}"
+                background_tasks.add_task(send_sms, txn.customer_phone, cust_msg)
+            if merchant.phone:
+                merch_msg = f"PaySure Alert: You received Rs.{txn.amount:.2f} from {txn.customer_phone or 'Customer'}. UTR: {txn.utr}. Verify: {verify_url}"
+                background_tasks.add_task(send_sms, merchant.phone, merch_msg)
+
+        return {"status": "success", "transaction_id": txn.id, "utr": txn.utr}
 
     elif event == "payment.failed":
         razorpay_id = payload.get("id")
