@@ -29,12 +29,12 @@ from firestore_db import (
 SECRET_KEY = os.getenv("SECRET_KEY", "paysure-super-secret-key-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_DAYS = 30
-RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "rzp_test_xxxxxxxxxxxx")
-RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "your_razorpay_test_secret")
-RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET", "your_webhook_secret")
-TWILIO_SID = os.getenv("TWILIO_SID", "your_twilio_sid")
-TWILIO_TOKEN = os.getenv("TWILIO_TOKEN", "your_twilio_token")
-TWILIO_PHONE = os.getenv("TWILIO_PHONE", "+1234567890")
+RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID") or "rzp_test_SjPsXMmj345aei"
+RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET") or "your_razorpay_test_secret"
+RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET") or "your_webhook_secret"
+TWILIO_SID = os.getenv("TWILIO_SID") or "your_twilio_sid"
+TWILIO_TOKEN = os.getenv("TWILIO_TOKEN") or "your_twilio_token"
+TWILIO_PHONE = os.getenv("TWILIO_PHONE") or "+1234567890"
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 razorpay_client = None
