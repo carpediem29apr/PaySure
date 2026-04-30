@@ -3,7 +3,6 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Send, Sparkles, Loader2 } from "lucide-react";
-import { sendChatMessage } from "@/lib/api";
 import type { Transaction } from "@/data/transactions";
 
 interface Msg {
@@ -47,12 +46,22 @@ export const ChatSheet = ({ open, onOpenChange, transactions }: Props) => {
     setLoading(true);
 
     try {
-      const reply = await sendChatMessage(text, msgs, transactions);
+      await new Promise((res) => setTimeout(res, 1500));
+      let reply = "This is a simulated AI response. Since the backend is disabled, I cannot analyze your transactions in real-time.";
+      
+      if (text.toLowerCase().includes("dispute")) {
+        reply = "You have a few disputed transactions. I recommend checking the 'Duplicates' tab and refunding the second transaction if the UTRs match.";
+      } else if (text.toLowerCase().includes("refund")) {
+        reply = "To refund a transaction, tap on it in the log and click the 'Refund to Customer' button. This will simulate a refund locally.";
+      } else if (text.toLowerCase().includes("summarize") || text.toLowerCase().includes("today")) {
+        reply = `You have ${transactions.filter(t => t.date === "Today").length} transactions recorded for today. Everything looks normal!`;
+      }
+      
       setMsgs((m) => [...m, { id: id + "b", from: "bot", text: reply }]);
     } catch {
       setMsgs((m) => [
         ...m,
-        { id: id + "b", from: "bot", text: "Sorry, I couldn't connect to the server. Make sure the backend is running on port 8000." },
+        { id: id + "b", from: "bot", text: "Sorry, I couldn't process that locally." },
       ]);
     } finally {
       setLoading(false);

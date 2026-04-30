@@ -1,4 +1,4 @@
-import { API_BASE } from "@/lib/api";
+import { Transaction } from "@/data/transactions";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, CheckCircle, AlertTriangle, Clock, RefreshCw } from "lucide-react";
@@ -25,10 +25,36 @@ const Reconcile = () => {
   const fetchReconcile = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/reconcile`);
-      if (!res.ok) throw new Error("Failed");
-      const d = await res.json();
-      setData(d);
+      // Simulate network delay
+      await new Promise(res => setTimeout(res, 800));
+      
+      const stored = localStorage.getItem("paysure_txns");
+      const txns: Transaction[] = stored ? JSON.parse(stored) : [];
+      
+      const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+      const todayTxns = txns.filter(t => t.date === "Today" || t.date === today);
+
+      const data: ReconcileData = {
+        date: "Today",
+        total_transactions: todayTxns.length,
+        captured_count: todayTxns.filter(t => t.status === "received").length,
+        captured_amount: todayTxns.filter(t => t.status === "received").reduce((sum, t) => sum + t.amount, 0),
+        pending_count: todayTxns.filter(t => t.status === "verifying").length,
+        pending_amount: todayTxns.filter(t => t.status === "verifying").reduce((sum, t) => sum + t.amount, 0),
+        failed_count: todayTxns.filter(t => t.status === "failed").length,
+        failed_amount: todayTxns.filter(t => t.status === "failed").reduce((sum, t) => sum + t.amount, 0),
+        refunded_count: todayTxns.filter(t => t.status === "refunded").length,
+        refunded_amount: todayTxns.filter(t => t.status === "refunded").reduce((sum, t) => sum + t.amount, 0),
+        missing: todayTxns.filter(t => t.status === "verifying").map(t => ({
+          utr: t.utr,
+          amount: t.amount,
+          time: t.time,
+          phone: t.customerName || "Walk-in",
+          status: "pending"
+        }))
+      };
+      
+      setData(data);
     } catch {
       setData(null);
     }

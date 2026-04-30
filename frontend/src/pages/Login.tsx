@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff, ShieldCheck, ArrowRight, User, Phone, Lock, CreditCard, Hash, Building2, Calendar, Mail, AlertCircle } from "lucide-react";
-import { warmUpBackend, API_BASE } from "@/lib/api";
+
 
 type Mode = "login" | "signup";
 
@@ -40,8 +40,6 @@ const Login = () => {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Wake up the backend while user fills in the login form
-  useEffect(() => { warmUpBackend(); }, []);
 
   const handlePhoneChange = (value: string) => {
     // Only allow numeric input
@@ -77,64 +75,47 @@ const Login = () => {
     setIsSubmitting(true);
 
     try {
+      // Simulate network delay
+      await new Promise((resolve) => setTimeout(resolve, 800));
+
+      const users = getStoredUsers();
+
       if (mode === "signup") {
-        const response = await fetch(`${API_BASE}/api/auth/register`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email,
-            password,
-            business_name: shopName,
-            phone,
-            name,
-            age,
-            aadhaar,
-            pan,
-            merchant_id_code: merchantId,
-            gstin
-          }),
-        });
-
-        if (!response.ok) {
-          const data = await response.json();
-          throw new Error(data.detail || "Signup failed");
+        if (users.some((u) => u.phone === phone)) {
+          throw new Error("Phone number is already registered.");
         }
 
-        // Auto-login after signup
-        const loginResponse = await fetch(`${API_BASE}/api/auth/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone, password }),
-        });
+        const newUser: StoredUser = {
+          name,
+          shopName,
+          phone,
+          email,
+          password,
+          age,
+          aadhaar,
+          pan,
+          merchantId,
+          gstin,
+        };
 
-        if (loginResponse.ok) {
-          const data = await loginResponse.json();
-          localStorage.setItem("paysure_token", data.access_token);
-          localStorage.setItem("paysure_current_user", JSON.stringify(data.merchant));
-          navigate("/dashboard");
-        } else {
-          setMode("login");
-          setError("Account created! Please login.");
-        }
+        const updatedUsers = [...users, newUser];
+        localStorage.setItem("paysure_users", JSON.stringify(updatedUsers));
+
+        // Auto-login
+        localStorage.setItem("paysure_current_user", JSON.stringify(newUser));
+        navigate("/dashboard");
       } else {
-        const response = await fetch(`${API_BASE}/api/auth/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone, password }),
-        });
-
-        if (!response.ok) {
-          const data = await response.json();
-          throw new Error(data.detail || "Invalid phone number or password");
+        const user = users.find((u) => u.phone === phone && u.password === password);
+        if (!user) {
+          throw new Error("Invalid phone number or password");
         }
 
-        const data = await response.json();
-        localStorage.setItem("paysure_token", data.access_token);
-        localStorage.setItem("paysure_current_user", JSON.stringify(data.merchant));
+        localStorage.setItem("paysure_current_user", JSON.stringify(user));
         navigate("/dashboard");
       }
-    } catch (err: any) {
-      setError(err.message || "An error occurred. Please try again.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg || "An error occurred. Please try again.");
     } finally {
       setIsSubmitting(false);
     }

@@ -1,4 +1,4 @@
-import { API_BASE } from "@/lib/api";
+
 import { useState } from "react";
 import type { Transaction } from "@/data/transactions";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -40,24 +40,12 @@ export const TransactionDetail = ({ txn, open, onOpenChange, onRefund }: Props) 
 
   const handleProof = async () => {
     try {
-      const token = localStorage.getItem("paysure_token");
-      const res = await fetch(`${API_BASE}/api/proof/generate`, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          ...(token ? { "Authorization": `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({ transaction_id: String(txn.id) })
-      });
-      const data = await res.json();
-      if (data.verification_url) {
-        setProofGenerated(true);
-        txn.utr = data.utr;
-        toast({ title: "Proof generated", description: "Share link is ready." });
-      } else {
-        const errorMessage = Array.isArray(data.detail) ? data.detail[0]?.msg : data.detail;
-        throw new Error(errorMessage || "Failed to generate proof");
-      }
+      // Simulate network delay for proof generation
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      
+      setProofGenerated(true);
+      txn.utr = `UTR${Math.floor(Math.random() * 10000000000)}`;
+      toast({ title: "Proof generated", description: "Share link is ready." });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       toast({ title: "Error", description: msg, variant: "destructive" });

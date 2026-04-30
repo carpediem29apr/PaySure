@@ -1,4 +1,4 @@
-import { API_BASE } from "@/lib/api";
+import { Transaction } from "@/data/transactions";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Check, Shield, AlertTriangle, Clock, ArrowLeft, XCircle } from "lucide-react";
@@ -24,14 +24,37 @@ const VerifyPayment = () => {
 
   useEffect(() => {
     if (!utr) return;
-    fetch(`${API_BASE}/api/verify/${utr}`)
-      .then((res) => {
-        if (!res.ok) throw new Error("Payment not found");
-        return res.json();
-      })
-      .then(setData)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+    
+    // Simulate network delay
+    setTimeout(() => {
+      try {
+        const stored = localStorage.getItem("paysure_txns");
+        const txns: Transaction[] = stored ? JSON.parse(stored) : [];
+        const txn = txns.find(t => t.utr === utr || t.utrDuplicate === utr);
+        
+        if (!txn) {
+          throw new Error("Payment not found");
+        }
+
+        const merchantStr = localStorage.getItem("paysure_current_user");
+        const merchantName = merchantStr ? JSON.parse(merchantStr).shopName : "Unknown Merchant";
+
+        setData({
+          valid: true,
+          amount: txn.amount,
+          currency: "INR",
+          utr: utr,
+          status: txn.status === "received" ? "captured" : (txn.status === "refunded" ? "refunded" : "pending"),
+          merchant_name: merchantName,
+          timestamp: txn.date === "Today" ? new Date().toISOString() : new Date(Date.now() - 86400000).toISOString(),
+          description: txn.paymentMethod
+        });
+        setLoading(false);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+        setLoading(false);
+      }
+    }, 800);
   }, [utr]);
 
   if (loading)

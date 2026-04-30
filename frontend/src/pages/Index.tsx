@@ -5,10 +5,8 @@ import { TransactionCard } from "@/components/paysure/TransactionCard";
 import { TransactionDetail } from "@/components/paysure/TransactionDetail";
 import { ProfileSheet } from "@/components/paysure/ProfileSheet";
 import { ChatSheet } from "@/components/paysure/ChatSheet";
-import { type Transaction } from "@/data/transactions";
+import { initialTransactions, type Transaction } from "@/data/transactions";
 import { User, MessageCircle, Plus, BarChart3, Loader2 } from "lucide-react";
-import axios from "axios";
-import { API_BASE, preloadRazorpay, warmUpBackend, isBackendReady } from "@/lib/api";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -19,7 +17,6 @@ const Index = () => {
   const [profileOpen, setProfileOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [backendWaking, setBackendWaking] = useState(!isBackendReady());
 
   // Auth guard: redirect to login if not authenticated
   useEffect(() => {
@@ -29,45 +26,38 @@ const Index = () => {
     }
   }, [navigate]);
 
-  // Fetch transactions from FastAPI backend
-  const fetchTxns = useCallback(async () => {
+  // Load transactions from localStorage
+  const loadTxns = useCallback(() => {
     try {
-      const token = localStorage.getItem("paysure_token");
-      const res = await axios.get(`${API_BASE}/api/transactions`, { 
-        timeout: 15000,
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      });
-      // Map backend fields to frontend Transaction interface
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const mapped = res.data.map((t: any) => ({
-        id: t.id.toString(),
-        type: t.status === "captured" ? "standard" : (t.status === "failed" ? "unfinished" : "unfinished"),
-        amount: t.amount,
-        status: t.status === "captured" ? "received" : (t.status === "refunded" ? "refunded" : "verifying"),
-        date: new Date(t.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
-        time: new Date(t.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }),
-        customerName: t.customer_phone || "Walk-in",
-        utr: t.utr,
-        paymentMethod: t.description || "UPI Payment",
-        refundedAt: t.refund_id ? new Date().toLocaleTimeString() : undefined
-      }));
-      setTxns(mapped);
-      setBackendWaking(false);
+      const stored = localStorage.getItem("paysure_txns");
+      if (stored) {
+        setTxns(JSON.parse(stored));
+      } else {
+        localStorage.setItem("paysure_txns", JSON.stringify(initialTransactions));
+        setTxns(initialTransactions);
+      }
     } catch (err) {
-      console.error("Failed to fetch transactions", err);
+      console.error("Failed to load transactions", err);
+      setTxns(initialTransactions);
     }
   }, []);
 
   useEffect(() => {
-    // Wake up backend first, then fetch
-    warmUpBackend().then((ok) => {
-      setBackendWaking(!ok);
-      fetchTxns();
+    loadTxns();
+  }, [loadTxns]);
+
+  const preloadRazorpay = (): Promise<boolean> => {
+    return new Promise((resolve) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((window as any).Razorpay) { resolve(true); return; }
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.async = true;
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.head.appendChild(script);
     });
-    // Poll every 10s (not 5s — easier on free tier)
-    const interval = setInterval(fetchTxns, 10000);
-    return () => clearInterval(interval);
-  }, [fetchTxns]);
+  };
 
   const createPayment = async () => {
     const amountStr = window.prompt("Enter amount to charge (in ₹):", "100");
@@ -77,77 +67,70 @@ const Index = () => {
 
     setLoading(true);
     try {
-      const token = localStorage.getItem("paysure_token");
-      const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
+      // Fetch order ID securely using Vite proxy
+      const orderRes = await fetch('/api/razorpay/order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount })
+      });
+      if (!orderRes.ok) throw new Error("Failed to create order");
+      const orderData = await orderRes.json();
 
-      // Both requests run in parallel: create order + ensure Razorpay is loaded
-      const [res, razorpayReady] = await Promise.all([
-        axios.post(`${API_BASE}/api/payments/create-order`, {
-          amount,
-          customer_phone: "+919876543210",
-          description: "Test Payment from PaySure UI"
-        }, { 
-          timeout: 30000,
-          headers: authHeader
-        }),
-        preloadRazorpay()
-      ]);
-      
-      if (!razorpayReady) {
+      const isReady = await preloadRazorpay();
+      if (!isReady) {
         alert("Razorpay SDK failed to load. Please check your internet connection.");
         setLoading(false);
         return;
       }
 
       const options = {
-        key: res.data.key_id,
-        amount: res.data.transaction.amount * 100,
+        key: "rzp_test_SjPsXMmj345aei", 
+        amount: amount * 100,
         currency: "INR",
-        name: "PaySure",
-        description: "Payment for order",
-        order_id: res.data.razorpay_order_id,
+        name: "PaySure (Local Demo)",
+        description: "Test Transaction",
+        order_id: orderData.id, // The order ID from Razorpay
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        handler: async function (response: any) {
-          try {
-            const token = localStorage.getItem("paysure_token");
-            await axios.post(`${API_BASE}/api/payments/confirm`, {
-              transaction_id: res.data.transaction.id,
-              razorpay_payment_id: response.razorpay_payment_id
-            }, { 
-              timeout: 15000,
-              headers: token ? { Authorization: `Bearer ${token}` } : {}
-            });
-            alert(`Payment successful! ID: ${response.razorpay_payment_id}`);
-            fetchTxns();
-          } catch (e) {
-            console.error("Failed to confirm payment", e);
-            alert("Payment recorded, but confirmation failed. Please check transactions.");
-          }
+        handler: function (response: any) {
+          // Success callback
+          const newTxn: Transaction = {
+            id: `txn_${Date.now()}`,
+            type: "standard",
+            amount,
+            status: "received",
+            date: "Today",
+            time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }),
+            customerName: "Walk-in Customer",
+            utr: `UTR${Math.floor(Math.random() * 10000000000)}`,
+            paymentMethod: "UPI — Razorpay"
+          };
+
+          const updatedTxns = [newTxn, ...txns];
+          setTxns(updatedTxns);
+          localStorage.setItem("paysure_txns", JSON.stringify(updatedTxns));
+          
+          alert(`Payment processed! ID: ${response.razorpay_payment_id}`);
         },
         prefill: {
-          contact: "+919876543210"
+          name: "Walk-in Customer",
+          contact: "9999999999"
         },
         theme: {
-          color: "#000000"
+          color: "#ea580c"
         }
       };
-
+      
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const paymentObject = new (window as any).Razorpay(options);
+      const rzp1 = new (window as any).Razorpay(options);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      paymentObject.on('payment.failed', function (response: any) {
-        console.error("Razorpay Payment Failed Event:", response.error);
+      rzp1.on('payment.failed', function (response: any){
         alert("Payment Failed: " + response.error.description);
       });
-      paymentObject.open();
+      rzp1.open();
+
     } catch (err) {
-      const error = err as Error & { code?: string };
-      console.error("Caught error in createPayment:", error);
-      if (error?.code === "ECONNABORTED" || error?.message?.includes("timeout")) {
-        alert("Server is waking up. Please wait a few seconds and try again.");
-      } else {
-        alert("Failed to create payment. Please try again.");
-      }
+      console.error("Failed to open Razorpay", err);
+      alert("Failed to initialize payment gateway.");
     } finally {
       setLoading(false);
     }
@@ -163,18 +146,18 @@ const Index = () => {
   const handleRefund = async (id: string) => {
     setLoading(true);
     try {
-      const res = await axios.post(`${API_BASE}/api/refund`, {
-        transaction_id: String(id),
-        reason: "Duplicate payment requested refund"
-      });
+      // Simulate network delay
+      await new Promise((res) => setTimeout(res, 800));
+
       const stamp = new Date().toLocaleTimeString("en-IN", {
         hour: "2-digit",
         minute: "2-digit",
         hour12: true,
       });
-      setTxns((all) =>
-        all.map((t) => (t.id === id ? { ...t, status: "refunded", refundedAt: stamp } : t)),
-      );
+      
+      const updatedTxns = txns.map((t) => (t.id === id ? { ...t, status: "refunded" as const, refundedAt: stamp } : t));
+      setTxns(updatedTxns);
+      localStorage.setItem("paysure_txns", JSON.stringify(updatedTxns));
     } catch (err) {
       console.error("Refund failed", err);
       alert("Failed to process refund");

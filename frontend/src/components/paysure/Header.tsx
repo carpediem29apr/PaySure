@@ -1,4 +1,4 @@
-import { API_BASE } from "@/lib/api";
+
 import { useEffect, useState } from "react";
 import { merchantProfile } from "@/data/transactions";
 
