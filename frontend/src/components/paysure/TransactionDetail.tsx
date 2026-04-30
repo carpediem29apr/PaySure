@@ -32,6 +32,7 @@ export const TransactionDetail = ({ txn, open, onOpenChange, onRefund }: Props) 
   const isRefunded = txn.status === "refunded";
   const isVerifying = txn.status === "verifying";
   const isReceived = txn.status === "received";
+  const isFailed = txn.status === "failed";
 
   // Always use the deployed Vercel URL for QR codes (not localhost)
   const appUrl = import.meta.env.VITE_APP_URL || (window.location.hostname === "localhost" ? "https://paysure-five.vercel.app" : window.location.origin);
@@ -128,6 +129,10 @@ PaySure Merchant ID: PSR-1`
                 <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded bg-green-100 text-green-700 text-[11px] font-bold tracking-wider">
                   <Check className="h-3 w-3" /> RECEIVED
                 </div>
+              ) : isFailed ? (
+                <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded bg-destructive/10 text-destructive text-[11px] font-bold tracking-wider">
+                  <AlertOctagon className="h-3 w-3" /> FAILED
+                </div>
               ) : (
                 <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded bg-verifying-bg text-verifying text-[11px] font-bold tracking-wider animate-status-pulse">
                   <Clock className="h-3 w-3" /> VERIFYING
@@ -160,7 +165,7 @@ PaySure Merchant ID: PSR-1`
             >
               <div className="flex items-center gap-2">
                 <QrCode className="h-4 w-4 text-primary" />
-                <span className="text-sm font-semibold">Payment QR Code</span>
+                <span className="text-sm font-semibold">Confirmation QR Code</span>
               </div>
               <span className="text-xs text-muted-foreground">{showQR ? "Hide" : "Show"}</span>
             </button>
