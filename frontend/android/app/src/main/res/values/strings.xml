@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">PaySure</string>
-    <string name="title_activity_main">PaySure</string>
-    <string name="package_name">com.paysure.app</string>
-    <string name="custom_url_scheme">com.paysure.app</string>
-</resources>
