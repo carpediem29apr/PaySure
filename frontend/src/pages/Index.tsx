@@ -164,14 +164,35 @@ const Index = () => {
       };
       
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const rzp1 = new (window as any).Razorpay(options);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      rzp1.on('payment.failed', function (response: any){
-        // We don't update to failed yet, keep it 'verifying' as requested
-        // "when I click on failure in razorpay In the logs it should show verifying"
-        alert("Payment Failed: " + response.error.description);
-      });
-      rzp1.open();
+      if (isCapacitor && typeof (window as any).Checkout !== 'undefined') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window as any).Checkout.open(options, 
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          function(successResponse: any) {
+            const paymentId = typeof successResponse === 'string' ? successResponse : successResponse.razorpay_payment_id;
+            options.handler({ razorpay_payment_id: paymentId });
+          }, 
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          function(errorResponse: any) {
+            const errorDesc = errorResponse ? (errorResponse.description || errorResponse.reason || errorResponse.code || "Unknown error") : "Cancelled";
+            // Do not alert if they just closed the modal. Cordova throws code 0 for cancellation.
+            if (errorResponse && errorResponse.code !== 0 && errorDesc !== 'Payment Cancelled') {
+              alert("Payment Failed: " + errorDesc);
+            }
+            if (options.modal && options.modal.ondismiss) {
+              options.modal.ondismiss();
+            }
+          }
+        );
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const rzp1 = new (window as any).Razorpay(options);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        rzp1.on('payment.failed', function (response: any){
+          alert("Payment Failed: " + response.error.description);
+        });
+        rzp1.open();
+      }
 
     } catch (err) {
       console.error("Failed to open Razorpay", err);
