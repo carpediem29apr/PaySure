@@ -67,8 +67,14 @@ const Index = () => {
 
     setLoading(true);
     try {
-      // Fetch order ID securely using Vite proxy
-      const orderRes = await fetch('/api/razorpay/order', {
+      // Fetch order ID securely using Vite proxy or Vercel live function
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const isCapacitor = !!(window as any).Capacitor;
+      const apiUrl = isCapacitor 
+        ? 'https://paysure-five.vercel.app/api/razorpay/order' 
+        : '/api/razorpay/order';
+
+      const orderRes = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ amount })
