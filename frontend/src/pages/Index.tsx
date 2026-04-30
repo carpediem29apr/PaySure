@@ -124,6 +124,24 @@ const Index = () => {
       const rzp1 = new (window as any).Razorpay(options);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       rzp1.on('payment.failed', function (response: any){
+        const failedTxn: Transaction = {
+          id: `txn_${Date.now()}`,
+          type: "standard",
+          amount,
+          status: "verifying",
+          date: "Today",
+          time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }),
+          customerName: "Walk-in Customer",
+          utr: `FAILED_${Math.floor(Math.random() * 1000000)}`,
+          paymentMethod: "UPI — Failed Attempt"
+        };
+        
+        setTxns(prev => {
+          const updated = [failedTxn, ...prev];
+          localStorage.setItem("paysure_txns", JSON.stringify(updated));
+          return updated;
+        });
+
         alert("Payment Failed: " + response.error.description);
       });
       rzp1.open();
