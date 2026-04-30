@@ -83,7 +83,26 @@ const Index = () => {
         return;
       }
 
-      let currentTxnId: string | null = null;
+      let currentTxnId = `txn_${Date.now()}`;
+      
+      // 1. Instantly log 'verifying' when initialized
+      const initialTxn: Transaction = {
+        id: currentTxnId,
+        type: "standard",
+        amount,
+        status: "verifying",
+        date: "Today",
+        time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }),
+        customerName: "Walk-in Customer",
+        utr: `VERIFYING_${Math.floor(Math.random() * 1000000)}`,
+        paymentMethod: "UPI — Razorpay"
+      };
+
+      setTxns(prev => {
+        const updated = [initialTxn, ...prev];
+        localStorage.setItem("paysure_txns", JSON.stringify(updated));
+        return updated;
+      });
 
       const options = {
         key: "rzp_test_SjPsXMmj345aei", 
@@ -91,25 +110,20 @@ const Index = () => {
         currency: "INR",
         name: "PaySure (Local Demo)",
         description: "Test Transaction",
-        order_id: orderData.id, // The order ID from Razorpay
+        order_id: orderData.id, 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         handler: function (response: any) {
-          currentTxnId = `txn_${Date.now()}`;
-          // Success callback
-          const newTxn: Transaction = {
-            id: currentTxnId,
-            type: "standard",
-            amount,
-            status: "received",
-            date: "Today",
-            time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }),
-            customerName: "Walk-in Customer",
-            utr: `UTR${Math.floor(Math.random() * 10000000000)}`,
-            paymentMethod: "UPI — Razorpay"
-          };
-
+          // 2. On Success, update to 'received'
           setTxns(prev => {
-            const updated = [newTxn, ...prev];
+            const updated = prev.map(t => 
+              t.id === currentTxnId 
+                ? { 
+                    ...t, 
+                    status: "received" as const, 
+                    utr: `UTR${Math.floor(Math.random() * 10000000000)}` 
+                  } 
+                : t
+            );
             localStorage.setItem("paysure_txns", JSON.stringify(updated));
             return updated;
           });
@@ -118,36 +132,20 @@ const Index = () => {
         },
         modal: {
           ondismiss: function () {
-            if (currentTxnId) {
-              setTxns(prev => {
-                // If it's not already 'received', mark it as 'failed' on close
-                const updated = prev.map(t => 
-                  t.id === currentTxnId && t.status !== 'received' 
-                    ? { ...t, status: "failed" as const } 
-                    : t
-                );
-                localStorage.setItem("paysure_txns", JSON.stringify(updated));
-                return updated;
-              });
-            } else {
-              // If user closes without attempting anything, log a failed transaction immediately
-              const cancelledTxn: Transaction = {
-                id: `txn_${Date.now()}`,
-                type: "standard",
-                amount,
-                status: "failed",
-                date: "Today",
-                time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }),
-                customerName: "Walk-in Customer",
-                utr: `CANCEL_${Math.floor(Math.random() * 1000000)}`,
-                paymentMethod: "UPI — Cancelled"
-              };
-              setTxns(prev => {
-                const updated = [cancelledTxn, ...prev];
-                localStorage.setItem("paysure_txns", JSON.stringify(updated));
-                return updated;
-              });
-            }
+            // 3. On Close, if not 'received', mark as 'failed'
+            setTxns(prev => {
+              const updated = prev.map(t => 
+                t.id === currentTxnId && t.status !== 'received' 
+                  ? { 
+                      ...t, 
+                      status: "failed" as const,
+                      utr: `FAILED_${Math.floor(Math.random() * 1000000)}`
+                    } 
+                  : t
+              );
+              localStorage.setItem("paysure_txns", JSON.stringify(updated));
+              return updated;
+            });
           }
         },
         prefill: {
@@ -163,30 +161,8 @@ const Index = () => {
       const rzp1 = new (window as any).Razorpay(options);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       rzp1.on('payment.failed', function (response: any){
-        if (!currentTxnId) {
-          currentTxnId = `txn_${Date.now()}`;
-        }
-        
-        const failedTxn: Transaction = {
-          id: currentTxnId,
-          type: "standard",
-          amount,
-          status: "verifying",
-          date: "Today",
-          time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }),
-          customerName: "Walk-in Customer",
-          utr: `FAILED_${Math.floor(Math.random() * 1000000)}`,
-          paymentMethod: "UPI — Failed Attempt"
-        };
-        
-        setTxns(prev => {
-          // Check if we already logged this failed txn to avoid duplicates
-          if (prev.some(t => t.id === currentTxnId)) return prev;
-          const updated = [failedTxn, ...prev];
-          localStorage.setItem("paysure_txns", JSON.stringify(updated));
-          return updated;
-        });
-
+        // We don't update to failed yet, keep it 'verifying' as requested
+        // "when I click on failure in razorpay In the logs it should show verifying"
         alert("Payment Failed: " + response.error.description);
       });
       rzp1.open();

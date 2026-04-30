@@ -15,6 +15,8 @@ export const TransactionCard = ({ txn, onClick }: Props) => {
   const isVerifying = txn.status === "verifying";
   const isReceived = txn.status === "received";
 
+  const isFailed = txn.status === "failed";
+
   const statusConfig = isRefunded
     ? {
         label: "REFUNDED",
@@ -35,6 +37,13 @@ export const TransactionCard = ({ txn, onClick }: Props) => {
         bg: "bg-verifying-bg",
         text: "text-verifying",
         border: "border-l-verifying",
+      }
+    : isFailed
+    ? {
+        label: "FAILED",
+        bg: "bg-destructive/10",
+        text: "text-destructive",
+        border: "border-l-destructive",
       }
     : {
         label: "RECEIVED",
